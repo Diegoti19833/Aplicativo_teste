@@ -32,15 +32,24 @@ export const useUserData = () => {
 
       // Se não há dados do usuário, criar um registro inicial
       if (!data) {
+        const metaRole = user.user_metadata?.role;
+        const validRoles = ['funcionario', 'gerente', 'admin', 'caixa'];
+        const userRole = validRoles.includes(metaRole) ? metaRole : 'funcionario';
+
         const newUserData = {
           id: user.id,
           email: user.email,
           name: user.user_metadata?.name || user.email.split('@')[0],
-          role: 'funcionario', // role padrão
-          xp_total: 0,
+          role: userRole,
+          total_xp: 0,
+          coins: 100,
           level: 1,
-          streak_days: 0,
-          last_activity_date: new Date().toISOString().split('T')[0]
+          current_streak: 0,
+          max_streak: 0,
+          lessons_completed: 0,
+          quizzes_completed: 0,
+          is_active: true,
+          last_activity_at: new Date().toISOString()
         };
 
         const { data: createdUser, error: createError } = await supabase

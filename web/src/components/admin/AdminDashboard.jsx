@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  LayoutGrid, BookOpen, Users, Award, 
-  Search, Bell, LogOut, Settings, 
-  TrendingUp, FileText, ChevronRight 
+import {
+  LayoutGrid, BookOpen, Users, Award, ShoppingBag, Target,
+  Search, Bell, LogOut, Settings, BarChart3,
+  TrendingUp, FileText, ChevronRight, Trophy
 } from 'lucide-react';
-import { 
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, 
-  CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area 
+import {
+  BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { AdminDb } from '../../services/adminDb';
@@ -15,143 +15,152 @@ import AdminTrilhas from './AdminTrilhas';
 import AdminUsers from './AdminUsers';
 import AdminRelatorios from './AdminRelatorios';
 import AdminConfig from './AdminConfig';
-
-const dataBar = [
-  { name: 'Jan', uv: 4000, pv: 2400 },
-  { name: 'Fev', uv: 3000, pv: 1398 },
-  { name: 'Mar', uv: 2000, pv: 9800 },
-  { name: 'Abr', uv: 2780, pv: 3908 },
-  { name: 'Mai', uv: 1890, pv: 4800 },
-  { name: 'Jun', uv: 2390, pv: 3800 },
-];
-
-const dataLine = [
-  { name: 'Seg', xp: 400 },
-  { name: 'Ter', xp: 300 },
-  { name: 'Qua', xp: 550 },
-  { name: 'Qui', xp: 450 },
-  { name: 'Sex', xp: 700 },
-  { name: 'Sáb', xp: 800 },
-  { name: 'Dom', xp: 600 },
-];
-
-const popularTrails = [
-  { id: 1, name: 'Fundamentos do Atendimento', students: 1250, completed: 850, rating: 4.8 },
-  { id: 2, name: 'Técnicas de Vendas Pet', students: 980, completed: 620, rating: 4.9 },
-  { id: 3, name: 'Cuidados Básicos', students: 850, completed: 400, rating: 4.7 },
-  { id: 4, name: 'Gestão de Estoque', students: 600, completed: 580, rating: 4.6 },
-];
+import AdminRanking from './AdminRanking';
+import AdminLoja from './AdminLoja';
+import AdminMissoes from './AdminMissoes';
 
 function DashboardHome() {
+  const [overview, setOverview] = useState(null);
+  const [trails, setTrails] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        const [dashData, trailsData] = await Promise.all([
+          AdminDb.reports.getAdminDashboard().catch(() => null),
+          AdminDb.trails.list().catch(() => [])
+        ]);
+        if (!alive) return;
+        setOverview(dashData);
+        setTrails(trailsData.slice(0, 5));
+      } catch (e) {
+        console.error('Dashboard load error:', e);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    load();
+    return () => { alive = false; };
+  }, []);
+
+  const kpis = overview?.success ? {
+    totalUsers: overview.total_users || 0,
+    totalXp: overview.total_xp || 0,
+    lessonsCompleted: overview.total_lessons_completed || 0,
+    newUsers: overview.new_users_30d || 0,
+    totalPurchases: overview.total_purchases || 0,
+    coinsSpent: overview.total_coins_spent || 0,
+    activeUsers: overview.active_users || 0,
+  } : { totalUsers: 0, totalXp: 0, lessonsCompleted: 0, newUsers: 0, totalPurchases: 0, coinsSpent: 0, activeUsers: 0 };
+
+  const monthlyData = overview?.monthly_completions || [];
+  const chartData = monthlyData.map(d => ({ name: d.month, completions: d.completions }));
+
+  const COLORS = ['#0047AB', '#10B981', '#F59E0B', '#EF4444'];
+
+  const pieData = [
+    { name: 'Ativos', value: kpis.activeUsers },
+    { name: 'Inativos', value: Math.max(0, kpis.totalUsers - kpis.activeUsers) },
+  ];
+
+  if (loading) {
+    return (
+      <div style={{ padding: 32, textAlign: 'center', color: '#6B7280' }}>
+        Carregando dados do dashboard...
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: 32 }}>
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', marginBottom: 4 }}>Visão Geral do Sistema</h1>
-        <p style={{ color: '#6B7280' }}>Bem-vindo ao painel de controle da Pet Class.</p>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', marginBottom: 4 }}>Visao Geral do Sistema</h1>
+        <p style={{ color: '#6B7280' }}>Dados em tempo real do seu app de gamificacao.</p>
       </div>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 24, marginBottom: 32 }}>
-        <KPICard title="Total de Alunos" value="1.500" icon={<Users size={24} color="#0047AB"/>} trend="+12%" />
-        <KPICard title="XP Gerado" value="25.000" icon={<Award size={24} color="#F59E0B"/>} trend="+8%" />
-        <KPICard title="Aulas Concluídas" value="120" icon={<BookOpen size={24} color="#10B981"/>} trend="+24%" />
-        <KPICard title="Novos Cadastros" value="45" icon={<TrendingUp size={24} color="#8B5CF6"/>} trend="+5%" />
+        <KPICard title="Total de Usuarios" value={kpis.totalUsers.toLocaleString()} icon={<Users size={24} color="#0047AB"/>} subtitle={`${kpis.activeUsers} ativos`} />
+        <KPICard title="XP Total Gerado" value={kpis.totalXp.toLocaleString()} icon={<Award size={24} color="#F59E0B"/>} subtitle="todos os usuarios" />
+        <KPICard title="Aulas Concluidas" value={kpis.lessonsCompleted.toLocaleString()} icon={<BookOpen size={24} color="#10B981"/>} subtitle="total geral" />
+        <KPICard title="Novos (30 dias)" value={kpis.newUsers.toLocaleString()} icon={<TrendingUp size={24} color="#8B5CF6"/>} subtitle={`${kpis.totalPurchases} compras na loja`} />
       </div>
 
       {/* Charts Row */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, marginBottom: 32 }}>
-        {/* Main Chart */}
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600 }}>Progresso Geral das Trilhas</h3>
-            <select style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 12 }}>
-              <option>Últimos 6 meses</option>
-              <option>Este ano</option>
-            </select>
-          </div>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Conclusoes Mensais de Aulas</h3>
           <div style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dataBar}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  cursor={{ fill: '#f9fafb' }}
-                />
-                <Bar dataKey="uv" fill="#0047AB" radius={[4, 4, 0, 0]} barSize={30} />
-                <Bar dataKey="pv" fill="#93C5FD" radius={[4, 4, 0, 0]} barSize={30} />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="completions" fill="#0047AB" radius={[4, 4, 0, 0]} barSize={40} name="Conclusoes" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#9CA3AF' }}>
+                Sem dados de conclusoes ainda
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Side Chart */}
         <div className="card">
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Atividade Diária (XP)</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Usuarios Ativos vs Inativos</h3>
           <div style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dataLine}>
-                <defs>
-                  <linearGradient id="colorXp" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0047AB" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#0047AB" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                  {pieData.map((entry, index) => (
+                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
                 <Tooltip />
-                <Area type="monotone" dataKey="xp" stroke="#0047AB" fillOpacity={1} fill="url(#colorXp)" strokeWidth={3} />
-              </AreaChart>
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Popular Trails Table */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600 }}>Trilhas Mais Populares</h3>
-          <button style={{ color: 'var(--brand)', background: 'none', border: 'none', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>Ver todas</button>
+      {/* Economia e Trilhas */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div className="card">
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Economia da Loja</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ background: '#F0FDF4', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#059669' }}>{kpis.totalPurchases}</div>
+              <div style={{ fontSize: 12, color: '#6B7280' }}>Compras Realizadas</div>
+            </div>
+            <div style={{ background: '#FEF3C7', borderRadius: 12, padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#D97706' }}>{kpis.coinsSpent.toLocaleString()}</div>
+              <div style={{ fontSize: 12, color: '#6B7280' }}>Coins Gastos</div>
+            </div>
+          </div>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
-              <th style={{ textAlign: 'left', padding: '12px 0', fontSize: 12, color: '#6B7280', fontWeight: 600 }}>NOME DA TRILHA</th>
-              <th style={{ textAlign: 'left', padding: '12px 0', fontSize: 12, color: '#6B7280', fontWeight: 600 }}>ALUNOS</th>
-              <th style={{ textAlign: 'left', padding: '12px 0', fontSize: 12, color: '#6B7280', fontWeight: 600 }}>CONCLUSÕES</th>
-              <th style={{ textAlign: 'right', padding: '12px 0', fontSize: 12, color: '#6B7280', fontWeight: 600 }}>AVALIAÇÃO</th>
-            </tr>
-          </thead>
-          <tbody>
-            {popularTrails.map((trail, index) => (
-              <tr key={trail.id} style={{ borderBottom: index !== popularTrails.length - 1 ? '1px solid #f9fafb' : 'none' }}>
-                <td style={{ padding: '16px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 32, height: 32, background: '#EFF6FF', borderRadius: 8, display: 'grid', placeItems: 'center', color: '#0047AB', fontWeight: 700, fontSize: 12 }}>
-                      {index + 1}
-                    </div>
-                    <span style={{ fontWeight: 500, color: '#1F2937' }}>{trail.name}</span>
-                  </div>
-                </td>
-                <td style={{ padding: '16px 0', color: '#6B7280' }}>{trail.students}</td>
-                <td style={{ padding: '16px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 60, height: 6, background: '#f3f4f6', borderRadius: 3 }}>
-                      <div style={{ width: `${(trail.completed/trail.students)*100}%`, height: '100%', background: '#10B981', borderRadius: 3 }}></div>
-                    </div>
-                    <span style={{ fontSize: 12, color: '#6B7280' }}>{Math.round((trail.completed/trail.students)*100)}%</span>
-                  </div>
-                </td>
-                <td style={{ padding: '16px 0', textAlign: 'right' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#FFFBEB', color: '#B45309', padding: '2px 8px', borderRadius: 12, fontSize: 12, fontWeight: 600 }}>
-                    ★ {trail.rating}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+        <div className="card">
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Trilhas Ativas</h3>
+          {trails.length > 0 ? trails.map((trail, i) => (
+            <div key={trail.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: i < trails.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: trail.color || '#0047AB' }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{trail.title}</div>
+                <div style={{ fontSize: 12, color: '#6B7280' }}>{trail.total_lessons || 0} aulas</div>
+              </div>
+              <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 12, background: trail.is_active ? '#D1FAE5' : '#FEE2E2', color: trail.is_active ? '#059669' : '#DC2626' }}>
+                {trail.is_active ? 'Ativa' : 'Inativa'}
+              </span>
+            </div>
+          )) : (
+            <div style={{ color: '#9CA3AF', textAlign: 'center', padding: 20 }}>Nenhuma trilha cadastrada</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -169,27 +178,26 @@ export default function AdminDashboard() {
       try {
         const session = await AdminDb.auth.getSession();
         if (!session) {
-          console.warn('Sessão inválida no AdminDashboard');
-          // localStorage.removeItem('pa_user'); // Evitar logout forçado imediato para debug
-          // navigate('/login');
+          localStorage.removeItem('pa_user');
+          navigate('/login');
           return;
         }
         await AdminDb.auth.ensureUserRow();
         const p = await AdminDb.auth.getMyProfile();
         if (!alive) return;
+        if (p && !['admin', 'gerente'].includes(p.role)) {
+          navigate('/login');
+          return;
+        }
         setProfile(p);
       } catch (e) {
         console.error('Erro no AdminDashboard check:', e);
-        // localStorage.removeItem('pa_user');
-        // navigate('/login');
       } finally {
         if (alive) setProfileLoading(false);
       }
     };
     run();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [navigate]);
 
   const roleLabel = (role) => {
@@ -197,7 +205,7 @@ export default function AdminDashboard() {
     if (r === 'admin') return 'Admin';
     if (r === 'gerente') return 'Gerente';
     if (r === 'caixa') return 'Caixa';
-    return 'Funcionário';
+    return 'Funcionario';
   };
 
   const handleLogout = async () => {
@@ -213,6 +221,9 @@ export default function AdminDashboard() {
     switch(activeTab) {
       case 'trilhas': return <AdminTrilhas />;
       case 'users': return <AdminUsers />;
+      case 'ranking': return <AdminRanking />;
+      case 'loja': return <AdminLoja />;
+      case 'missoes': return <AdminMissoes />;
       case 'reports': return <AdminRelatorios />;
       case 'settings': return <AdminConfig />;
       default: return <DashboardHome />;
@@ -221,23 +232,23 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-layout" style={{ display: 'flex', minHeight: '100vh', background: '#F3F4F6' }}>
-      
+
       {/* Sidebar */}
-      <aside style={{ 
-        width: 260, 
-        background: '#fff', 
-        borderRight: '1px solid #e5e7eb', 
-        display: 'flex', 
+      <aside style={{
+        width: 260,
+        background: '#fff',
+        borderRight: '1px solid #e5e7eb',
+        display: 'flex',
         flexDirection: 'column',
         position: 'fixed',
         height: '100vh',
         zIndex: 10
       }}>
-        <div className="brand" style={{ 
-          height: 70, 
-          display: 'flex', 
-          alignItems: 'center', 
-          padding: '0 24px', 
+        <div className="brand" style={{
+          height: 70,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 24px',
           borderBottom: '1px solid #f3f4f6',
           gap: 12
         }}>
@@ -250,71 +261,50 @@ export default function AdminDashboard() {
         <nav style={{ padding: 20, flex: 1 }}>
           <MenuItem icon={<LayoutGrid size={20}/>} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
           <MenuItem icon={<BookOpen size={20}/>} label="Trilhas & Aulas" active={activeTab === 'trilhas'} onClick={() => setActiveTab('trilhas')} />
-          <MenuItem icon={<Users size={20}/>} label="Usuários & Ranking" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
-          <MenuItem icon={<FileText size={20}/>} label="Relatórios" active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
+          <MenuItem icon={<Users size={20}/>} label="Usuarios" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
+          <MenuItem icon={<Trophy size={20}/>} label="Ranking" active={activeTab === 'ranking'} onClick={() => setActiveTab('ranking')} />
+          <MenuItem icon={<ShoppingBag size={20}/>} label="Loja & Premios" active={activeTab === 'loja'} onClick={() => setActiveTab('loja')} />
+          <MenuItem icon={<Target size={20}/>} label="Missoes Diarias" active={activeTab === 'missoes'} onClick={() => setActiveTab('missoes')} />
+          <MenuItem icon={<FileText size={20}/>} label="Relatorios" active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} />
           <div style={{ margin: '20px 0', borderTop: '1px solid #f3f4f6' }} />
-          <MenuItem icon={<Settings size={20}/>} label="Configurações" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+          <MenuItem icon={<Settings size={20}/>} label="Configuracoes" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </nav>
 
         <div style={{ padding: 20 }}>
-          <div style={{ 
-            background: 'linear-gradient(135deg, var(--brand), var(--brand-dark))', 
-            borderRadius: 16, 
-            padding: 20, 
+          <div style={{
+            background: 'linear-gradient(135deg, var(--brand), var(--brand-dark))',
+            borderRadius: 16,
+            padding: 20,
             color: '#fff',
             textAlign: 'center'
           }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Pet Class Pro</div>
-            <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 12 }}>Acesso total liberado</div>
-            <button style={{ 
-              background: 'rgba(255,255,255,0.2)', 
-              border: 'none', 
-              borderRadius: 8, 
-              padding: '6px 12px', 
-              color: '#fff', 
-              fontSize: 12,
-              cursor: 'pointer'
-            }}>Ver planos</button>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>Painel Administrativo</div>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <main style={{ flex: 1, marginLeft: 260 }}>
-        
+
         {/* Header */}
-        <header style={{ 
-          height: 70, 
-          background: '#fff', 
-          borderBottom: '1px solid #e5e7eb', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
+        <header style={{
+          height: 70,
+          background: '#fff',
+          borderBottom: '1px solid #e5e7eb',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
           padding: '0 32px',
           position: 'sticky',
           top: 0,
           zIndex: 9
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', background: '#F3F4F6', padding: '8px 16px', borderRadius: 8, width: 300 }}>
-            <Search size={18} color="#9CA3AF" />
-            <input 
-              placeholder="Buscar trilhas, alunos..." 
-              style={{ 
-                border: 'none', 
-                background: 'transparent', 
-                marginLeft: 10, 
-                outline: 'none', 
-                fontSize: 14, 
-                width: '100%' 
-              }} 
-            />
+          <div style={{ fontSize: 14, color: '#6B7280' }}>
+            Painel Administrativo
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}>
-              <Bell size={20} color="#6B7280" />
-              <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, background: '#EF4444', borderRadius: '50%' }} />
-            </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#1F2937' }}>
@@ -324,10 +314,10 @@ export default function AdminDashboard() {
                   {profileLoading ? '' : roleLabel(profile?.role)}
                 </div>
               </div>
-              <img 
-                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'Admin')}&background=0047AB&color=fff`} 
-                alt="Admin" 
-                style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid #fff', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }} 
+              <img
+                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'Admin')}&background=0047AB&color=fff`}
+                alt="Admin"
+                style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid #fff', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
               />
               <button onClick={handleLogout} style={{ background: '#FEF2F2', border: 'none', padding: 8, borderRadius: 8, cursor: 'pointer', marginLeft: 8 }}>
                 <LogOut size={18} color="#EF4444" />
@@ -346,19 +336,19 @@ export default function AdminDashboard() {
 
 function MenuItem({ icon, label, active, onClick }) {
   return (
-    <button 
+    <button
       onClick={onClick}
-      style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 12, 
-        width: '100%', 
-        padding: '12px 16px', 
-        border: 'none', 
-        background: active ? '#EFF6FF' : 'transparent', 
-        color: active ? '#0047AB' : '#6B7280', 
-        borderRadius: 12, 
-        cursor: 'pointer', 
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        width: '100%',
+        padding: '12px 16px',
+        border: 'none',
+        background: active ? '#EFF6FF' : 'transparent',
+        color: active ? '#0047AB' : '#6B7280',
+        borderRadius: 12,
+        cursor: 'pointer',
         marginBottom: 4,
         fontWeight: active ? 600 : 400,
         transition: 'all 0.2s ease'
@@ -371,7 +361,7 @@ function MenuItem({ icon, label, active, onClick }) {
   );
 }
 
-function KPICard({ title, value, icon, trend }) {
+function KPICard({ title, value, icon, subtitle }) {
   return (
     <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 20 }}>
       <div style={{ width: 48, height: 48, borderRadius: 12, background: '#F9FAFB', display: 'grid', placeItems: 'center' }}>
@@ -380,7 +370,7 @@ function KPICard({ title, value, icon, trend }) {
       <div>
         <div style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>{title}</div>
         <div style={{ fontSize: 24, fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>{value}</div>
-        <div style={{ fontSize: 11, color: '#10B981', fontWeight: 600 }}>{trend} este mês</div>
+        {subtitle && <div style={{ fontSize: 11, color: '#6B7280' }}>{subtitle}</div>}
       </div>
     </div>
   );

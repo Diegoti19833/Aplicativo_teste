@@ -116,51 +116,6 @@ export const AdminDb = {
     },
   },
 
-  trails: {
-    list: async () => {
-      const supabase = requireSupabase()
-      const { data, error } = await supabase
-        .from('trails')
-        .select(
-          'id,title,description,color,difficulty_level,estimated_duration,total_lessons,is_active,order_index,created_at,updated_at'
-        )
-        .order('order_index')
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return data || []
-    },
-    create: async ({ title, description, levelLabel, estimatedMinutes, color }) => {
-      const supabase = requireSupabase()
-      const payload = {
-        title,
-        description: description || null,
-        difficulty_level: difficultyFromLabel(levelLabel),
-        estimated_duration: safeNumber(estimatedMinutes, 60),
-        color: color || '#3B82F6',
-        is_active: true,
-      }
-      const { data, error } = await supabase.from('trails').insert(payload).select().single()
-      if (error) throw error
-      return data
-    },
-    setActive: async ({ id, isActive }) => {
-      const supabase = requireSupabase()
-      const { data, error } = await supabase
-        .from('trails')
-        .update({ is_active: !!isActive })
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) throw error
-      return data
-    },
-    remove: async ({ id }) => {
-      const supabase = requireSupabase()
-      const { error } = await supabase.from('trails').delete().eq('id', id)
-      if (error) throw error
-    },
-  },
-
   lessons: {
     listByTrail: async ({ trailId }) => {
       const supabase = requireSupabase()
@@ -331,6 +286,206 @@ export const AdminDb = {
         lessonsCompletedCount: progressResult.count || 0,
         lessonCompletedRows: progressResult.data || [],
       }
+    },
+    getAdminDashboard: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase.rpc('get_admin_overview')
+      if (error) throw error
+      return data
+    },
+  },
+
+  ranking: {
+    getFull: async ({ limit = 50, offset = 0, franchiseId } = {}) => {
+      const supabase = requireSupabase()
+      const params = { limit_param: limit, offset_param: offset }
+      if (franchiseId) params.franchise_filter = franchiseId
+      const { data, error } = await supabase.rpc('get_full_ranking', params)
+      if (error) throw error
+      return data
+    },
+  },
+
+  storeItems: {
+    list: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('store_items')
+        .select('*')
+        .order('order_index')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    create: async ({ name, description, icon, itemType, price, rarity, stockQuantity, purchaseLimit }) => {
+      const supabase = requireSupabase()
+      const payload = {
+        name,
+        title: name,
+        description: description || null,
+        icon: icon || '🎁',
+        item_type: itemType || 'cosmetic',
+        price: safeNumber(price, 10),
+        rarity: rarity || 'common',
+        stock_quantity: stockQuantity != null ? safeNumber(stockQuantity, null) : null,
+        purchase_limit: safeNumber(purchaseLimit, 1),
+        is_available: true,
+      }
+      const { data, error } = await supabase.from('store_items').insert(payload).select().single()
+      if (error) throw error
+      return data
+    },
+    update: async ({ id, ...updates }) => {
+      const supabase = requireSupabase()
+      const payload = {}
+      if (updates.name !== undefined) { payload.name = updates.name; payload.title = updates.name; }
+      if (updates.description !== undefined) payload.description = updates.description
+      if (updates.price !== undefined) payload.price = safeNumber(updates.price, 10)
+      if (updates.stockQuantity !== undefined) payload.stock_quantity = updates.stockQuantity
+      if (updates.isAvailable !== undefined) payload.is_available = !!updates.isAvailable
+      if (updates.icon !== undefined) payload.icon = updates.icon
+      const { data, error } = await supabase.from('store_items').update(payload).eq('id', id).select().single()
+      if (error) throw error
+      return data
+    },
+    remove: async ({ id }) => {
+      const supabase = requireSupabase()
+      const { error } = await supabase.from('store_items').delete().eq('id', id)
+      if (error) throw error
+    },
+    setAvailable: async ({ id, isAvailable }) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('store_items')
+        .update({ is_available: !!isAvailable })
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    },
+  },
+
+  purchases: {
+    list: async ({ userId, fromIso, toIso } = {}) => {
+      const supabase = requireSupabase()
+      let query = supabase
+        .from('user_purchases')
+        .select('*, user:users(id,name,email), item:store_items(id,name,title,icon,price)')
+        .order('purchase_date', { ascending: false })
+      if (userId) query = query.eq('user_id', userId)
+      if (fromIso) query = query.gte('purchase_date', fromIso)
+      if (toIso) query = query.lte('purchase_date', toIso)
+      const { data, error } = await query
+      if (error) throw error
+      return data || []
+    },
+  },
+
+  missions: {
+    list: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('daily_missions')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    create: async ({ title, description, missionType, targetValue, xpReward, coinsReward, difficultyLevel }) => {
+      const supabase = requireSupabase()
+      const payload = {
+        title,
+        description: description || null,
+        mission_type: missionType,
+        target_value: safeNumber(targetValue, 1),
+        xp_reward: safeNumber(xpReward, 20),
+        coins_reward: safeNumber(coinsReward, 5),
+        difficulty_level: safeNumber(difficultyLevel, 1),
+        is_active: true,
+      }
+      const { data, error } = await supabase.from('daily_missions').insert(payload).select().single()
+      if (error) throw error
+      return data
+    },
+    setActive: async ({ id, isActive }) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('daily_missions')
+        .update({ is_active: !!isActive })
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    },
+    remove: async ({ id }) => {
+      const supabase = requireSupabase()
+      const { error } = await supabase.from('daily_missions').delete().eq('id', id)
+      if (error) throw error
+    },
+  },
+
+  trails: {
+    ...(() => {
+      // This is a workaround to avoid redefining the trails namespace.
+      // The actual trails object is defined above and this block extends it.
+      return {}
+    })(),
+    list: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('trails')
+        .select(
+          'id,title,description,color,difficulty_level,estimated_duration,total_lessons,is_active,order_index,created_at,updated_at'
+        )
+        .order('order_index')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    create: async ({ title, description, levelLabel, estimatedMinutes, color }) => {
+      const supabase = requireSupabase()
+      const payload = {
+        title,
+        description: description || null,
+        difficulty_level: difficultyFromLabel(levelLabel),
+        estimated_duration: safeNumber(estimatedMinutes, 60),
+        color: color || '#3B82F6',
+        is_active: true,
+      }
+      const { data, error } = await supabase.from('trails').insert(payload).select().single()
+      if (error) throw error
+      return data
+    },
+    update: async ({ id, title, description, levelLabel, estimatedMinutes, color, isActive }) => {
+      const supabase = requireSupabase()
+      const payload = {}
+      if (title !== undefined) payload.title = title
+      if (description !== undefined) payload.description = description
+      if (levelLabel !== undefined) payload.difficulty_level = difficultyFromLabel(levelLabel)
+      if (estimatedMinutes !== undefined) payload.estimated_duration = safeNumber(estimatedMinutes, 60)
+      if (color !== undefined) payload.color = color
+      if (isActive !== undefined) payload.is_active = !!isActive
+      const { data, error } = await supabase.from('trails').update(payload).eq('id', id).select().single()
+      if (error) throw error
+      return data
+    },
+    setActive: async ({ id, isActive }) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('trails')
+        .update({ is_active: !!isActive })
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    },
+    remove: async ({ id }) => {
+      const supabase = requireSupabase()
+      const { error } = await supabase.from('trails').delete().eq('id', id)
+      if (error) throw error
     },
   },
 }

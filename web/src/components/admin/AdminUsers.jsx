@@ -181,9 +181,23 @@ export default function AdminUsers() {
                   </span>
                 </td>
                 <td style={{ padding: '16px 24px', textAlign: 'right' }}>
-                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
-                    <MoreVertical size={18} color="#9CA3AF" />
-                  </button>
+                  <select
+                    value={user.role}
+                    onChange={async (e) => {
+                      try {
+                        await AdminDb.users.setRole({ id: user.id, role: e.target.value });
+                        await loadUsers();
+                      } catch (err) {
+                        alert('Erro ao alterar funcao: ' + err.message);
+                      }
+                    }}
+                    style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 12, cursor: 'pointer' }}
+                  >
+                    <option value="funcionario">Funcionario</option>
+                    <option value="gerente">Gerente</option>
+                    <option value="admin">Admin</option>
+                    <option value="caixa">Caixa</option>
+                  </select>
                 </td>
               </tr>
             ))}

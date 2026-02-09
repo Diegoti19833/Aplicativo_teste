@@ -95,9 +95,30 @@ function RequireAuth({children}){
 }
 
 function RequireAdmin({ children }) {
-  // Como a aplicação Web é exclusiva para Admin/Gerente,
-  // permitimos acesso a qualquer usuário logado.
-  // O controle de permissões de dados será feito pelo Supabase RLS se necessário.
+  const [ready, setReady] = useState(false)
+  const [allowed, setAllowed] = useState(false)
+  useEffect(() => {
+    let alive = true
+    async function check() {
+      try {
+        const profile = await AdminDb.auth.getMyProfile()
+        if (alive) {
+          setAllowed(profile && ['admin', 'gerente'].includes(profile.role))
+          setReady(true)
+        }
+      } catch {
+        if (alive) { setAllowed(false); setReady(true) }
+      }
+    }
+    check()
+    return () => { alive = false }
+  }, [])
+  if (!ready) return <div className="page container">Verificando permissoes...</div>
+  if (!allowed) return <div className="page container" style={{textAlign:'center',paddingTop:'100px'}}>
+    <h2>Acesso Negado</h2>
+    <p>Voce precisa ter permissao de Admin ou Gerente para acessar este painel.</p>
+    <button onClick={() => window.location.href = '/login'} style={{marginTop:'20px',padding:'10px 20px',background:'#008037',color:'#fff',border:'none',borderRadius:'8px',cursor:'pointer'}}>Voltar ao Login</button>
+  </div>
   return children
 }
 

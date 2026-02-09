@@ -499,25 +499,23 @@ function DashboardScreen({ navigate }) {
 }
 
 function RankingScreen() {
+  const { user } = useAuth()
   const { userData } = useUserData()
-  const [ranking, setRanking] = useState([])
+  const [myRanking, setMyRanking] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchRanking()
-  }, [])
+    if (user) fetchMyRanking()
+  }, [user])
 
-  const fetchRanking = async () => {
+  const fetchMyRanking = async () => {
     try {
       setLoading(true)
       const { data, error } = await supabase
-        .from('users')
-        .select('id, name, xp_total, level')
-        .order('xp_total', { ascending: false })
-        .limit(10)
+        .rpc('get_my_ranking', { user_id_param: user.id })
 
       if (error) throw error
-      setRanking(data || [])
+      setMyRanking(data)
     } catch (err) {
       console.error('Erro ao buscar ranking:', err)
     } finally {
@@ -537,38 +535,57 @@ function RankingScreen() {
     )
   }
 
+  const position = myRanking?.position || '-'
+  const totalUsers = myRanking?.total_users || 0
+  const totalXp = myRanking?.total_xp || userData?.total_xp || 0
+  const level = myRanking?.level || userData?.level || 1
+  const streak = myRanking?.current_streak || 0
+  const lessonsCount = myRanking?.lessons_completed || 0
+  const quizzesCount = myRanking?.quizzes_completed || 0
+
   return (
     <SafeAreaView style={styles.containerAlt}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
-          <Text style={styles.title}>Ranking</Text>
-          <Text style={styles.subtitle}>Top 10 usuários por XP</Text>
+          <Text style={styles.title}>Meu Ranking</Text>
+          <Text style={styles.subtitle}>Sua posicao entre {totalUsers} participantes</Text>
         </View>
-        
-        {ranking.map((user, index) => (
-          <View key={user.id} style={[styles.card, { 
-            backgroundColor: user.id === userData?.id ? '#e6f7ff' : '#ffffff' 
-          }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                <Text style={[styles.title, { marginRight: 12, minWidth: 30 }]}>
-                  {index + 1}º
-                </Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>{user.name}</Text>
-                  <Text style={styles.subtitle}>Nível {user.level}</Text>
-                </View>
-              </View>
-              <Text style={styles.title}>{user.xp_total} XP</Text>
-            </View>
+
+        <View style={[styles.card, { backgroundColor: '#e6f7ff', alignItems: 'center', paddingVertical: 24 }]}>
+          <Text style={{ fontSize: 48, fontWeight: 'bold', color: '#00924A' }}>{position}º</Text>
+          <Text style={[styles.title, { marginTop: 4 }]}>{myRanking?.name || userData?.name}</Text>
+          <Text style={styles.subtitle}>de {totalUsers} participantes</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={[styles.title, { marginBottom: 12 }]}>Suas Estatisticas</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={styles.subtitle}>XP Total</Text>
+            <Text style={styles.title}>{totalXp}</Text>
           </View>
-        ))}
-        
-        {ranking.length === 0 && (
-          <View style={styles.card}>
-            <Text style={styles.subtitle}>Nenhum usuário encontrado no ranking.</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={styles.subtitle}>Nivel</Text>
+            <Text style={styles.title}>{level}</Text>
           </View>
-        )}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={styles.subtitle}>Sequencia</Text>
+            <Text style={styles.title}>{streak} dias</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={styles.subtitle}>Aulas Concluidas</Text>
+            <Text style={styles.title}>{lessonsCount}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={styles.subtitle}>Quizzes Corretos</Text>
+            <Text style={styles.title}>{quizzesCount}</Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.subtitle}>
+            Continue estudando para subir no ranking! Cada aula e quiz completado aumenta sua posicao.
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   )
@@ -898,13 +915,6 @@ function LessonDetailsScreen({ trail, lesson, navigate }) {
                 onVideoComplete={handleVideoComplete}
                 lesson={lesson}
               />
-              {/* Botão de debug para pular vídeo */}
-               <Pressable 
-                 style={[styles.primaryButton, { marginTop: 10, backgroundColor: '#059669' }]}
-                 onPress={handleVideoComplete}
-               >
-                 <Text style={styles.primaryButtonText}>🚀 Pular para Quiz (Debug)</Text>
-               </Pressable>
             </View>
           )}
           
