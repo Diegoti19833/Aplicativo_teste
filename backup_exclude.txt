@@ -1,0 +1,9 @@
+node_modules
+.expo
+.git
+dist
+build
+*.log
+.env
+.DS_Store
+Thumbs.db
