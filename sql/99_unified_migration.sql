@@ -98,6 +98,14 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Normalizar roles existentes antes de aplicar constraint
+UPDATE users SET role = 'funcionario' WHERE lower(replace(role, 'á', 'a')) IN ('funcionário', 'funcionario', 'employee', 'func');
+UPDATE users SET role = 'gerente' WHERE lower(role) IN ('gerente', 'manager', 'ger');
+UPDATE users SET role = 'admin' WHERE lower(role) IN ('admin', 'administrador', 'administrator');
+UPDATE users SET role = 'caixa' WHERE lower(role) IN ('caixa', 'cashier');
+-- Qualquer role que nao se encaixe vira funcionario
+UPDATE users SET role = 'funcionario' WHERE role NOT IN ('funcionario', 'gerente', 'admin', 'caixa');
+
 -- Atualizar CHECK constraint de role para incluir todos os valores
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check
