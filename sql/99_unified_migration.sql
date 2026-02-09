@@ -728,6 +728,26 @@ CREATE TRIGGER update_franchise_units_updated_at
 -- 19. FUNÇÕES DE NEGÓCIO (corrigidas)
 -- ============================================================================
 
+-- Dropar funcoes existentes que podem ter parametros com nomes diferentes
+-- (PostgreSQL nao permite renomear parametros com CREATE OR REPLACE)
+DROP FUNCTION IF EXISTS calculate_user_level(INTEGER);
+DROP FUNCTION IF EXISTS calculate_user_total_xp(UUID);
+DROP FUNCTION IF EXISTS update_user_stats(UUID);
+DROP FUNCTION IF EXISTS complete_lesson(UUID, UUID);
+DROP FUNCTION IF EXISTS answer_quiz(UUID, UUID, UUID);
+DROP FUNCTION IF EXISTS submit_quiz_answer(UUID, UUID, UUID);
+DROP FUNCTION IF EXISTS get_user_dashboard(UUID);
+DROP FUNCTION IF EXISTS get_trail_progress(UUID, UUID);
+DROP FUNCTION IF EXISTS get_my_ranking(UUID);
+DROP FUNCTION IF EXISTS get_full_ranking(INTEGER, INTEGER, UUID);
+DROP FUNCTION IF EXISTS purchase_store_item(UUID, UUID, INTEGER);
+DROP FUNCTION IF EXISTS use_store_item(UUID, UUID, INTEGER);
+DROP FUNCTION IF EXISTS record_daily_activity(UUID, TEXT, INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS update_daily_mission_progress(UUID, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS check_achievement(UUID, UUID);
+DROP FUNCTION IF EXISTS get_lesson_progress_detail(UUID, UUID);
+DROP FUNCTION IF EXISTS get_admin_overview();
+
 -- Calcular nível baseado em XP
 CREATE OR REPLACE FUNCTION calculate_user_level(p_total_xp INTEGER)
 RETURNS INTEGER AS $$
