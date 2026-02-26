@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Plus, Search, MoreVertical, Book, PlayCircle, X, Check, Video, FileText,
   Pencil, Trash, List, Clock, AlignLeft, ExternalLink, HelpCircle,
-  ChevronDown, ChevronUp, Users, Eye, ToggleLeft, ToggleRight, TrendingUp
+  ChevronDown, ChevronUp, Users, Eye, ToggleLeft, ToggleRight, TrendingUp, UserCheck, Briefcase, Shield
 } from 'lucide-react';
 import { AdminDb } from '../../services/adminDb';
 import { useToast } from './ToastContext';
@@ -182,7 +182,14 @@ export default function AdminTrilhas() {
   const [search, setSearch] = useState('');
 
   // Form states
-  const [newTrailData, setNewTrailData] = useState({ title: '', level: 'Básico', estimatedMinutes: 60, description: '' });
+  const ROLE_OPTIONS = [
+    { value: 'funcionario', label: 'Funcionário', icon: UserCheck, color: 'blue' },
+    { value: 'gerente', label: 'Gerente', icon: Briefcase, color: 'purple' },
+    { value: 'caixa', label: 'Caixa', icon: Shield, color: 'amber' },
+  ];
+
+  const [filterRole, setFilterRole] = useState('todos');
+  const [newTrailData, setNewTrailData] = useState({ title: '', level: 'Básico', estimatedMinutes: 60, description: '', targetRoles: ['funcionario', 'gerente', 'caixa'] });
   const [editingTrailData, setEditingTrailData] = useState(null);
   const [newLessonData, setNewLessonData] = useState({ title: '', type: 'video', content: '', durationMinutes: 15, quizData: null });
   const [editingLessonData, setEditingLessonData] = useState(null);
@@ -252,6 +259,7 @@ export default function AdminTrilhas() {
 
   const handleCreateTrail = async () => {
     if (!newTrailData.title) return alert('Preencha o título da trilha');
+    if (!newTrailData.targetRoles || newTrailData.targetRoles.length === 0) return alert('Selecione pelo menos uma função');
     try {
       setSavingTrail(true);
       await AdminDb.trails.create({
@@ -259,8 +267,9 @@ export default function AdminTrilhas() {
         description: newTrailData.description,
         levelLabel: newTrailData.level,
         estimatedMinutes: newTrailData.estimatedMinutes,
+        targetRoles: newTrailData.targetRoles,
       });
-      setNewTrailData({ title: '', level: 'Básico', estimatedMinutes: 60, description: '' });
+      setNewTrailData({ title: '', level: 'Básico', estimatedMinutes: 60, description: '', targetRoles: ['funcionario', 'gerente', 'caixa'] });
       setShowNewTrailModal(false);
       await loadTrails();
     } catch (e) {
@@ -280,7 +289,8 @@ export default function AdminTrilhas() {
         description: editingTrailData.description,
         levelLabel: editingTrailData.level,
         estimatedMinutes: editingTrailData.estimatedMinutes,
-        isActive: editingTrailData.is_active
+        isActive: editingTrailData.is_active,
+        targetRoles: editingTrailData.targetRoles,
       });
       setEditingTrailData(null);
       setShowEditTrailModal(false);
@@ -310,7 +320,8 @@ export default function AdminTrilhas() {
       description: trail.description || '',
       level: trail.difficulty_level === 1 ? 'Básico' : trail.difficulty_level === 3 ? 'Intermediário' : 'Avançado',
       estimatedMinutes: trail.estimated_duration,
-      is_active: trail.is_active
+      is_active: trail.is_active,
+      targetRoles: trail.target_roles || ['funcionario', 'gerente', 'caixa'],
     });
     setShowEditTrailModal(true);
   };
@@ -480,6 +491,16 @@ export default function AdminTrilhas() {
               <option>Intermediário</option>
               <option>Avançado</option>
             </select>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="todos">Todas as Funções</option>
+              <option value="funcionario">Funcionário</option>
+              <option value="gerente">Gerente</option>
+              <option value="caixa">Caixa</option>
+            </select>
           </div>
         </div>
 
@@ -492,7 +513,11 @@ export default function AdminTrilhas() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {trails.filter(t => !search.trim() || t.title.toLowerCase().includes(search.toLowerCase())).map((trail) => (
+            {trails.filter(t => {
+              if (search.trim() && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
+              if (filterRole !== 'todos' && Array.isArray(t.target_roles) && !t.target_roles.includes(filterRole)) return false;
+              return true;
+            }).map((trail) => (
               <div
                 key={trail.id}
                 className={`bg-white rounded-xl shadow-sm border transition-all duration-200 group
@@ -530,7 +555,26 @@ export default function AdminTrilhas() {
                   </div>
 
                   <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1" title={trail.title}>{trail.title}</h3>
-                  <p className="text-sm text-gray-500 mb-4 line-clamp-2 h-10">{trail.description || 'Sem descrição definida.'}</p>
+                  <p className="text-sm text-gray-500 mb-3 line-clamp-2 h-10">{trail.description || 'Sem descrição definida.'}</p>
+
+                  {/* Target Roles Badges */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {(trail.target_roles || ['funcionario', 'gerente', 'caixa']).map(role => {
+                      const roleInfo = ROLE_OPTIONS.find(r => r.value === role);
+                      if (!roleInfo) return null;
+                      const colors = {
+                        blue: 'bg-blue-50 text-blue-700 border-blue-200',
+                        purple: 'bg-purple-50 text-purple-700 border-purple-200',
+                        amber: 'bg-amber-50 text-amber-700 border-amber-200',
+                      };
+                      return (
+                        <span key={role} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${colors[roleInfo.color]}`}>
+                          {React.createElement(roleInfo.icon, { size: 10 })}
+                          {roleInfo.label}
+                        </span>
+                      );
+                    })}
+                  </div>
 
                   <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
                     <div className="flex items-center gap-1.5">
@@ -669,6 +713,39 @@ export default function AdminTrilhas() {
                     />
                   </div>
                 </div>
+                {/* Público-alvo por Função */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Público-alvo (Funções)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ROLE_OPTIONS.map(role => {
+                      const isSelected = (newTrailData.targetRoles || []).includes(role.value);
+                      const colorMap = {
+                        blue: isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400',
+                        purple: isSelected ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400',
+                        amber: isSelected ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-300 hover:border-amber-400',
+                      };
+                      return (
+                        <button
+                          key={role.value}
+                          type="button"
+                          onClick={() => {
+                            const current = newTrailData.targetRoles || [];
+                            const next = isSelected ? current.filter(r => r !== role.value) : [...current, role.value];
+                            setNewTrailData({ ...newTrailData, targetRoles: next });
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${colorMap[role.color]}`}
+                        >
+                          {React.createElement(role.icon, { size: 14 })}
+                          {role.label}
+                          {isSelected && <Check size={14} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(newTrailData.targetRoles || []).length === 0 && (
+                    <p className="text-xs text-red-500 mt-1">Selecione pelo menos uma função</p>
+                  )}
+                </div>
                 <button
                   onClick={handleCreateTrail}
                   disabled={savingTrail}
@@ -729,6 +806,36 @@ export default function AdminTrilhas() {
                       value={editingTrailData.estimatedMinutes}
                       onChange={e => setEditingTrailData({ ...editingTrailData, estimatedMinutes: e.target.value })}
                     />
+                  </div>
+                </div>
+                {/* Público-alvo por Função */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Público-alvo (Funções)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ROLE_OPTIONS.map(role => {
+                      const isSelected = (editingTrailData.targetRoles || []).includes(role.value);
+                      const colorMap = {
+                        blue: isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400',
+                        purple: isSelected ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400',
+                        amber: isSelected ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-300 hover:border-amber-400',
+                      };
+                      return (
+                        <button
+                          key={role.value}
+                          type="button"
+                          onClick={() => {
+                            const current = editingTrailData.targetRoles || [];
+                            const next = isSelected ? current.filter(r => r !== role.value) : [...current, role.value];
+                            setEditingTrailData({ ...editingTrailData, targetRoles: next });
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${colorMap[role.color]}`}
+                        >
+                          {React.createElement(role.icon, { size: 14 })}
+                          {role.label}
+                          {isSelected && <Check size={14} />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <button

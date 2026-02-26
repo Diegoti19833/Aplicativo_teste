@@ -731,14 +731,14 @@ export const AdminDb = {
       const { data, error } = await supabase
         .from('trails')
         .select(
-          'id,title,description,color,difficulty_level,estimated_duration,total_lessons,is_active,order_index,created_at,updated_at'
+          'id,title,description,color,difficulty_level,estimated_duration,total_lessons,is_active,order_index,target_roles,created_at,updated_at'
         )
         .order('order_index')
         .order('created_at', { ascending: false })
       if (error) throw error
       return data || []
     },
-    create: async ({ title, description, levelLabel, estimatedMinutes, color }) => {
+    create: async ({ title, description, levelLabel, estimatedMinutes, color, targetRoles }) => {
       const supabase = requireSupabase()
       const payload = {
         title,
@@ -746,13 +746,14 @@ export const AdminDb = {
         difficulty_level: difficultyFromLabel(levelLabel),
         estimated_duration: safeNumber(estimatedMinutes, 60),
         color: color || '#3B82F6',
+        target_roles: Array.isArray(targetRoles) && targetRoles.length > 0 ? targetRoles : ['funcionario', 'gerente', 'caixa'],
         is_active: true,
       }
       const { data, error } = await supabase.from('trails').insert(payload).select().single()
       if (error) throw error
       return data
     },
-    update: async ({ id, title, description, levelLabel, estimatedMinutes, color, isActive }) => {
+    update: async ({ id, title, description, levelLabel, estimatedMinutes, color, isActive, targetRoles }) => {
       const supabase = requireSupabase()
       const payload = {}
       if (title !== undefined) payload.title = title
@@ -761,6 +762,7 @@ export const AdminDb = {
       if (estimatedMinutes !== undefined) payload.estimated_duration = safeNumber(estimatedMinutes, 60)
       if (color !== undefined) payload.color = color
       if (isActive !== undefined) payload.is_active = !!isActive
+      if (targetRoles !== undefined) payload.target_roles = Array.isArray(targetRoles) ? targetRoles : ['funcionario', 'gerente', 'caixa']
       const { data, error } = await supabase.from('trails').update(payload).eq('id', id).select().single()
       if (error) throw error
       return data
