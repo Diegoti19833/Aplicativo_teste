@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { View, Text, StyleSheet, ScrollView, Pressable, Animated, TextInput, Image, Alert, Easing, Dimensions, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, TextInput, Image, Alert, Easing, Dimensions, TouchableOpacity, Modal, ActivityIndicator } from 'react-native'
 import Constants from 'expo-constants'
 import { LinearGradient } from 'expo-linear-gradient'
 import Svg, { Path, Rect, Circle, G, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg'
@@ -11,11 +11,14 @@ import { useDashboard } from './hooks/useDashboard'
 import { useStore } from './hooks/useStore'
 import { useLessons } from './hooks/useLessons'
 import { useQuizzes } from './hooks/useQuizzes'
+import { useNotifications } from './hooks/useNotifications'
 import { supabase } from './lib/supabase'
 import VideoPlayer from './components/VideoPlayer'
 import InteractiveQuiz from './components/InteractiveQuiz'
 import QuizGame from './components/QuizGame'
 import PetClassLogo from './components/PetClassLogo'
+import PlayerProfileQuiz from './components/PlayerProfileQuiz'
+import CertificateModal from './components/CertificateModal'
 
 // --- CONSTANTS & THEME ---
 const COLORS = {
@@ -1175,7 +1178,7 @@ function ConfettiExplosion({ visible, originX, originY }) {
   );
 }
 
-function LessonDetailsScreen({ lesson, navigate }) {
+function LessonDetailsScreen({ lesson, navigate, onOpenCert }) {
 
   const { user } = useAuth();
   const { quizzes, loading: quizLoading, answerQuiz } = useQuizzes(lesson?.lesson?.id || lesson?.id);
@@ -1232,7 +1235,23 @@ function LessonDetailsScreen({ lesson, navigate }) {
       setAnswered(false);
       setIsCorrect(false);
     } else {
-      if (user && lessonData?.id) await completeLesson(lessonData.id);
+      if (user && lessonData?.id) {
+        await completeLesson(lessonData.id);
+
+        // Se for a última aula da trilha, tentar emitir certificado
+        if (trailData?.id) {
+          setIsIssuing(true);
+          try {
+            const { data, error } = await supabase.rpc('issue_trail_certificate', {
+              p_trail_id: trailData.id
+            });
+            if (data && !error) {
+              setIssuedCert(data);
+            }
+          } catch (e) { console.log('Erro ao emitir certificado:', e); }
+          finally { setIsIssuing(false); }
+        }
+      }
       setShowResult(true);
     }
   };
@@ -1591,6 +1610,18 @@ function LessonDetailsScreen({ lesson, navigate }) {
               </View>
             </View>
 
+            {issuedCert && (
+              <View style={{ width: '100%', marginBottom: 12 }}>
+                <Button
+                  label="VER CERTIFICADO 🎓"
+                  onPress={() => {
+                    onOpenCert && onOpenCert(issuedCert);
+                  }}
+                  style={{ backgroundColor: COLORS.accent, borderColor: COLORS.accent }}
+                />
+              </View>
+            )}
+
             {score >= (quizzes.length / 2) && (
               <View style={{
                 backgroundColor: '#F0F9FF', paddingHorizontal: 16, paddingVertical: 10,
@@ -1624,23 +1655,35 @@ function RankingScreen() {
   const { user } = useAuth();
   const { userData } = useUserData();
   const [ranking, setRanking] = useState([]);
+  const [teamRanking, setTeamRanking] = useState([]);
+  const [tab, setTab] = useState('individual'); // 'individual' | 'teams'
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchRanking = async () => {
+    const fetchData = async () => {
+      setLoading(true);
       try {
-        const { data } = await supabase
-          .from('users')
-          .select('id, name, total_xp, level, role')
-          .eq('is_active', true)
-          .order('total_xp', { ascending: false })
-          .limit(20);
-        if (data) setRanking(data);
-      } catch (e) { console.log(e); }
-      finally { setLoading(false); }
+        if (tab === 'individual') {
+          const { data } = await supabase
+            .from('users')
+            .select('id, name, total_xp, level, role')
+            .eq('is_active', true)
+            .order('total_xp', { ascending: false })
+            .limit(20);
+          if (data) setRanking(data);
+        } else {
+          const { data, error } = await supabase.rpc('get_team_ranking');
+          if (error) throw error;
+          if (data) setTeamRanking(data);
+        }
+      } catch (e) {
+        console.log('Error fetching ranking:', e);
+      } finally {
+        setLoading(false);
+      }
     };
-    fetchRanking();
-  }, []);
+    fetchData();
+  }, [tab]);
 
   const myPos = ranking.findIndex(r => r.id === user?.id) + 1;
   const top3 = ranking.slice(0, 3);
@@ -1667,8 +1710,32 @@ function RankingScreen() {
           Ranking 🏆
         </Text>
         <Text style={{ fontSize: 13, color: '#8896AB', fontWeight: '500', marginTop: 2 }}>
-          Top colaboradores por XP
+          {tab === 'individual' ? 'Top colaboradores por XP' : 'Melhores equipes da semana'}
         </Text>
+      </View>
+
+      {/* ─── TABS ─── */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 20, marginBottom: 20, gap: 10 }}>
+        <Pressable
+          onPress={() => setTab('individual')}
+          style={{
+            flex: 1, backgroundColor: tab === 'individual' ? '#129151' : '#FFF',
+            paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+            borderWidth: 1, borderColor: tab === 'individual' ? '#129151' : '#E5E7EB',
+          }}
+        >
+          <Text style={{ color: tab === 'individual' ? '#FFF' : '#64748B', fontWeight: '700', fontSize: 13 }}>Individual</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setTab('teams')}
+          style={{
+            flex: 1, backgroundColor: tab === 'teams' ? '#129151' : '#FFF',
+            paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+            borderWidth: 1, borderColor: tab === 'teams' ? '#129151' : '#E5E7EB',
+          }}
+        >
+          <Text style={{ color: tab === 'teams' ? '#FFF' : '#64748B', fontWeight: '700', fontSize: 13 }}>Equipes</Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -1680,199 +1747,214 @@ function RankingScreen() {
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* ─── PÓDIO TOP 3 ─── */}
-          {top3.length >= 1 && (
-            <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-              <View style={{
-                backgroundColor: '#FFF',
-                borderRadius: 24, padding: 20,
-                shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.08, shadowRadius: 16, elevation: 6,
-              }}>
-                <Text style={{ textAlign: 'center', fontSize: 13, fontWeight: '700', color: '#8896AB', letterSpacing: 0.8, marginBottom: 20, textTransform: 'uppercase' }}>
-                  Pódio
-                </Text>
+          {tab === 'individual' ? (
+            <>
+              {/* ─── PÓDIO TOP 3 ─── */}
+              {top3.length >= 1 && (
+                <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+                  <View style={{
+                    backgroundColor: '#FFF',
+                    borderRadius: 24, padding: 20,
+                    shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.08, shadowRadius: 16, elevation: 6,
+                  }}>
+                    <Text style={{ textAlign: 'center', fontSize: 13, fontWeight: '700', color: '#8896AB', letterSpacing: 0.8, marginBottom: 20, textTransform: 'uppercase' }}>
+                      Pódio
+                    </Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 12 }}>
-                  {(podiumOrder.length >= 3 ? podiumOrder : top3).map((person, idx) => {
-                    const realIdx = top3.length >= 3 ? idx : idx;
-                    const height = podiumHeights[top3.length >= 3 ? idx : idx] || 80;
-                    const medalColor = podiumColors[top3.length >= 3 ? idx : idx];
-                    const pos = podiumPositions[top3.length >= 3 ? idx : idx] || idx + 1;
-                    const bg = podiumBg[top3.length >= 3 ? idx : idx];
-                    const border = podiumBorder[top3.length >= 3 ? idx : idx];
-                    const isMe = person?.id === user?.id;
-                    const initials = (person?.name || '?').substring(0, 2).toUpperCase();
-                    const avatarColor = AVATAR_COLORS[ranking.findIndex(r => r.id === person?.id) % AVATAR_COLORS.length];
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 12 }}>
+                      {podiumOrder.map((person, idx) => {
+                        const height = podiumHeights[idx] || 80;
+                        const medalColor = podiumColors[idx];
+                        const pos = podiumPositions[idx] || idx + 1;
+                        const bg = podiumBg[idx];
+                        const border = podiumBorder[idx];
+                        const isMe = person?.id === user?.id;
+                        const initials = (person?.name || '?').substring(0, 2).toUpperCase();
+                        const avatarColor = AVATAR_COLORS[ranking.findIndex(r => r.id === person?.id) % AVATAR_COLORS.length];
 
-                    if (!person) return null;
-                    return (
-                      <View key={person.id} style={{ alignItems: 'center', flex: 1 }}>
-                        {/* Medal */}
-                        <View style={{
-                          width: 28, height: 28, borderRadius: 14,
-                          backgroundColor: medalColor,
-                          alignItems: 'center', justifyContent: 'center',
-                          marginBottom: 6,
-                        }}>
-                          <Text style={{ fontSize: 12, fontWeight: '900', color: '#FFF' }}>{pos}</Text>
-                        </View>
-                        {/* Avatar */}
-                        <View style={{
-                          width: pos === 1 ? 60 : 50, height: pos === 1 ? 60 : 50,
-                          borderRadius: pos === 1 ? 30 : 25,
-                          backgroundColor: avatarColor,
-                          alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 3, borderColor: medalColor,
-                          marginBottom: 8,
-                          shadowColor: medalColor, shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
-                        }}>
-                          <Text style={{ color: '#FFF', fontWeight: '800', fontSize: pos === 1 ? 20 : 16 }}>
-                            {initials}
-                          </Text>
-                        </View>
-                        {/* Name */}
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E2D5A', textAlign: 'center', marginBottom: 2 }} numberOfLines={1}>
-                          {isMe ? 'Você' : person.name?.split(' ')[0]}
-                        </Text>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#8896AB' }}>
-                          {person.total_xp || 0} XP
-                        </Text>
-                        {/* Podium bar */}
-                        <View style={{
-                          width: '100%', height: height * 0.6 + 30,
-                          backgroundColor: bg,
-                          borderTopLeftRadius: 8, borderTopRightRadius: 8,
-                          borderTopWidth: 2, borderColor: border,
-                          marginTop: 10,
-                          alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <Text style={{ fontSize: 20 }}>
-                            {pos === 1 ? '🥇' : pos === 2 ? '🥈' : '🥉'}
-                          </Text>
-                        </View>
+                        if (!person) return null;
+                        return (
+                          <View key={person.id} style={{ alignItems: 'center', flex: 1 }}>
+                            {/* Medal */}
+                            <View style={{
+                              width: 28, height: 28, borderRadius: 14,
+                              backgroundColor: medalColor,
+                              alignItems: 'center', justifyContent: 'center',
+                              marginBottom: 6,
+                            }}>
+                              <Text style={{ fontSize: 12, fontWeight: '900', color: '#FFF' }}>{pos}</Text>
+                            </View>
+                            {/* Avatar */}
+                            <View style={{
+                              width: pos === 1 ? 60 : 50, height: pos === 1 ? 60 : 50,
+                              borderRadius: pos === 1 ? 30 : 25,
+                              backgroundColor: avatarColor,
+                              alignItems: 'center', justifyContent: 'center',
+                              borderWidth: 3, borderColor: medalColor,
+                              marginBottom: 8,
+                              shadowColor: medalColor, shadowOffset: { width: 0, height: 4 },
+                              shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
+                            }}>
+                              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: pos === 1 ? 20 : 16 }}>
+                                {initials}
+                              </Text>
+                            </View>
+                            {/* Name */}
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E2D5A', textAlign: 'center', marginBottom: 2 }} numberOfLines={1}>
+                              {isMe ? 'Você' : person.name?.split(' ')[0]}
+                            </Text>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#8896AB' }}>
+                              {person.total_xp || 0} XP
+                            </Text>
+                            {/* Podium bar */}
+                            <View style={{
+                              width: '100%', height: height * 0.6 + 30,
+                              backgroundColor: bg,
+                              borderTopLeftRadius: 8, borderTopRightRadius: 8,
+                              borderTopWidth: 2, borderColor: border,
+                              marginTop: 10,
+                              alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <Text style={{ fontSize: 20 }}>
+                                {pos === 1 ? '🥇' : pos === 2 ? '🥈' : '🥉'}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* ─── MEU CARD ─── */}
+              {myPos > 0 && (
+                <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+                  <LinearGradient
+                    colors={['#129151', '#129151']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    style={{ borderRadius: 20, padding: 18, flexDirection: 'row', alignItems: 'center' }}
+                  >
+                    <View style={{
+                      width: 48, height: 48, borderRadius: 24,
+                      backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
+                      marginRight: 14,
+                    }}>
+                      <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '800' }}>
+                        {(userData?.name || 'U').substring(0, 2).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600', marginBottom: 2 }}>SUA POSIÇÃO</Text>
+                      <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '900' }}>
+                        {myPos}º lugar
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600', marginBottom: 2 }}>SEU XP</Text>
+                      <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '900' }}>
+                        {userData?.total_xp || 0}
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              )}
+
+              {/* ─── STATS DO USUÁRIO ─── */}
+              <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  {[
+                    { icon: 'zap', label: 'Sequência', value: `${userData?.current_streak || 0}d`, bg: '#FEE2E2', color: '#EF4444' },
+                    { icon: 'book-open', label: 'Aulas', value: userData?.lessons_completed || 0, bg: '#DCFCE7', color: '#129151' },
+                    { icon: 'star', label: 'Nível', value: `Nv ${userData?.level || 1}`, bg: '#FEF3C7', color: '#F59E0B' },
+                  ].map((s, i) => (
+                    <View key={i} style={{
+                      flex: 1, alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, paddingVertical: 14,
+                      shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
+                    }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: s.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                        <Icon name={s.icon} size={18} color={s.color} />
                       </View>
-                    );
-                  })}
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#1E2D5A' }}>{s.value}</Text>
+                      <Text style={{ fontSize: 11, color: '#8896AB', fontWeight: '600', marginTop: 2 }}>{s.label}</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
-            </View>
-          )}
 
-          {/* ─── MEU CARD ─── */}
-          {myPos > 0 && (
-            <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-              <LinearGradient
-                colors={['#129151', '#129151']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={{ borderRadius: 20, padding: 18, flexDirection: 'row', alignItems: 'center' }}
-              >
-                <View style={{
-                  width: 48, height: 48, borderRadius: 24,
-                  backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
-                  marginRight: 14,
-                }}>
-                  <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '800' }}>
-                    {(userData?.name || 'U').substring(0, 2).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600', marginBottom: 2 }}>SUA POSIÇÃO</Text>
-                  <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '900' }}>
-                    {myPos}º lugar
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600', marginBottom: 2 }}>SEU XP</Text>
-                  <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '900' }}>
-                    {userData?.total_xp || 0}
-                  </Text>
-                </View>
-              </LinearGradient>
-            </View>
-          )}
-
-          {/* ─── STATS DO USUÁRIO ─── */}
-          <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              {[
-                { icon: 'zap', label: 'Sequência', value: `${userData?.current_streak || 0}d`, bg: '#FEE2E2', color: '#EF4444' },
-                { icon: 'book-open', label: 'Aulas', value: userData?.lessons_completed || 0, bg: '#DCFCE7', color: '#129151' },
-                { icon: 'star', label: 'Nível', value: `Nv ${userData?.level || 1}`, bg: '#FEF3C7', color: '#F59E0B' },
-              ].map((s, i) => (
-                <View key={i} style={{
-                  flex: 1, alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, paddingVertical: 14,
-                  shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
-                }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: s.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                    <Icon name={s.icon} size={18} color={s.color} />
-                  </View>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#1E2D5A' }}>{s.value}</Text>
-                  <Text style={{ fontSize: 11, color: '#8896AB', fontWeight: '600', marginTop: 2 }}>{s.label}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* ─── LISTA 4-10 ─── */}
-          {rest.length > 0 && (
-            <View style={{ paddingHorizontal: 20 }}>
-              <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A', marginBottom: 12 }}>
-                Outros Rankings
-              </Text>
-              <View style={{ gap: 8 }}>
-                {rest.map((r, i) => {
-                  const pos = i + 4;
-                  const isMe = r.id === user?.id;
-                  const avatarColor = AVATAR_COLORS[ranking.findIndex(rr => rr.id === r.id) % AVATAR_COLORS.length];
-                  const initials = (r.name || '?').substring(0, 2).toUpperCase();
+              {/* ─── LISTA COMPLETA ─── */}
+              <View style={{ paddingHorizontal: 20 }}>
+                {rest.map((person, idx) => {
+                  const initials = (person.name || '?').substring(0, 2).toUpperCase();
+                  const avatarColor = AVATAR_COLORS[(idx + 3) % AVATAR_COLORS.length];
                   return (
-                    <View key={r.id} style={{
-                      flexDirection: 'row', alignItems: 'center',
-                      backgroundColor: isMe ? '#ECFDF5' : '#FFF',
-                      borderRadius: 16, padding: 14,
-                      borderWidth: isMe ? 1.5 : 0, borderColor: '#129151',
-                      shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.05, shadowRadius: 6, elevation: isMe ? 4 : 2,
+                    <View key={person.id} style={{
+                      flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
+                      padding: 16, borderRadius: 16, marginBottom: 8,
+                      borderWidth: 1, borderColor: '#F1F5F9',
                     }}>
-                      {/* Position */}
-                      <View style={{
-                        width: 32, height: 32, borderRadius: 16,
-                        backgroundColor: isMe ? '#129151' : '#F1F5F9',
-                        alignItems: 'center', justifyContent: 'center', marginRight: 12,
-                      }}>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: isMe ? '#FFF' : '#8896AB' }}>
-                          {pos}
-                        </Text>
+                      <Text style={{ width: 28, fontSize: 14, fontWeight: '800', color: '#8896AB' }}>{idx + 4}º</Text>
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: avatarColor, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                        <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>{initials}</Text>
                       </View>
-                      {/* Avatar */}
-                      <View style={{
-                        width: 40, height: 40, borderRadius: 20,
-                        backgroundColor: avatarColor, alignItems: 'center', justifyContent: 'center',
-                        marginRight: 12,
-                      }}>
-                        <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '800' }}>{initials}</Text>
-                      </View>
-                      {/* Name */}
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E2D5A' }}>
-                          {isMe ? `${r.name} (Você)` : r.name}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: '#8896AB', fontWeight: '500', marginTop: 1 }}>
-                          {r.role || 'Colaborador'} • Nível {r.level || 1}
-                        </Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E2D5A' }}>{person.name}</Text>
+                        <Text style={{ fontSize: 11, color: '#8896AB' }}>{person.role || 'Membro'}</Text>
                       </View>
-                      {/* XP */}
-                      <View style={{ backgroundColor: '#F4F7FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#129151' }}>
-                          {r.total_xp || 0} XP
-                        </Text>
-                      </View>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: '#129151' }}>{person.total_xp || 0} XP</Text>
                     </View>
                   );
                 })}
               </View>
+            </>
+          ) : (
+            /* ─── LISTA DE EQUIPES ─── */
+            <View style={{ paddingHorizontal: 20 }}>
+              {teamRanking.length === 0 ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <Text style={{ color: '#8896AB' }}>Nenhuma equipe encontrada.</Text>
+                </View>
+              ) : (
+                teamRanking.map((team, idx) => {
+                  const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+                  return (
+                    <View key={team.team_id || idx} style={{
+                      flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
+                      padding: 16, borderRadius: 20, marginBottom: 12,
+                      borderWidth: 1, borderColor: team.is_user_team ? '#129151' : '#F1F5F9',
+                      shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+                    }}>
+                      <View style={{ width: 32, alignItems: 'center' }}>
+                        {idx === 0 ? <Text style={{ fontSize: 20 }}>🥇</Text>
+                          : idx === 1 ? <Text style={{ fontSize: 20 }}>🥈</Text>
+                            : idx === 2 ? <Text style={{ fontSize: 20 }}>🥉</Text>
+                              : <Text style={{ fontSize: 14, fontWeight: '800', color: '#8896AB' }}>{idx + 1}º</Text>
+                        }
+                      </View>
+                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: avatarColor + '20', alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                        <Icon name="users" size={20} color={avatarColor} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A' }}>{team.name}</Text>
+                          {team.is_user_team && (
+                            <View style={{ backgroundColor: '#129151', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 8 }}>
+                              <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>SUA</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 12, color: '#8896AB', marginTop: 2 }}>{team.member_count} membros</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '900', color: '#129151' }}>{team.total_xp}</Text>
+                        <Text style={{ fontSize: 10, color: '#8896AB', fontWeight: '700' }}>XP TOTAL</Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
             </View>
           )}
         </ScrollView>
@@ -2060,9 +2142,52 @@ function ShopScreen() {
   );
 }
 
-function PerfilScreen({ onLogout }) {
+function PerfilScreen({ onLogout, navigate, onOpenCert }) {
   const { userData } = useUserData();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
+  const { unreadCount } = useNotifications();
+  const [managerStats, setManagerStats] = useState(null);
+  const [certificates, setCertificates] = useState([]);
+  const [loadingCerts, setLoadingCerts] = useState(false);
+
+  useEffect(() => {
+    // Fetch manager stats if applicable
+    if (userData?.role === 'gerente' || userData?.role === 'admin') {
+      fetchManagerStats();
+    }
+    fetchCertificates();
+  }, [userData]);
+
+  const fetchManagerStats = async () => {
+    try {
+      const { data } = await supabase.rpc('get_manager_dashboard_summary');
+      if (data) setManagerStats(data);
+    } catch (e) { console.log(e); }
+  };
+
+  const fetchCertificates = async () => {
+    setLoadingCerts(true);
+    try {
+      const { data } = await supabase
+        .from('certificates')
+        .select('*')
+        .order('issued_at', { ascending: false });
+      if (data) setCertificates(data);
+    } catch (e) {
+      console.log('Error fetching certs:', e);
+    } finally {
+      setLoadingCerts(false);
+    }
+  };
+
+  const ARCHETYPE_CONFIG = {
+    'especialista': { label: 'Especialista', icon: 'crosshair', color: '#2563EB', bg: '#DBEAFE' },
+    'encantador': { label: 'Encantador', icon: 'heart', color: '#DB2777', bg: '#FCE7F3' },
+    'estrategista': { label: 'Estrategista', icon: 'compass', color: '#7C3AED', bg: '#F3E8FF' },
+    'agil': { label: 'Ágil', icon: 'zap', color: '#D97706', bg: '#FEF3C7' },
+  };
+
+  const arc = userData?.archetype ? ARCHETYPE_CONFIG[userData.archetype.toLowerCase()] : null;
 
   const handleLogout = async () => {
     await signOut();
@@ -2077,6 +2202,46 @@ function PerfilScreen({ onLogout }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F4F7FF' }}>
+      {/* Search Header */}
+      <View style={{
+        paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'
+      }}>
+        <View>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: '#1E2D5A', letterSpacing: -0.3 }}>
+            Perfil 👤
+          </Text>
+        </View>
+
+        {/* Floating Bell Icon */}
+        <Pressable
+          onPress={() => navigate('notificacoes')}
+          style={({ pressed }) => ({
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: '#FFF',
+            alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1, borderColor: '#ECFDF5',
+            shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.1, shadowRadius: 10, elevation: 5,
+            opacity: pressed ? 0.8 : 1
+          })}
+        >
+          <Icon name="bell" size={20} color="#129151" />
+          {unreadCount > 0 && (
+            <View style={{
+              position: 'absolute', top: 10, right: 10,
+              width: 16, height: 16, borderRadius: 8,
+              backgroundColor: '#EF4444', borderWidth: 2, borderColor: '#FFF',
+              alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Text style={{ color: '#FFF', fontSize: 8, fontWeight: '900' }}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
+
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
@@ -2108,6 +2273,20 @@ function PerfilScreen({ onLogout }) {
           <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '500', marginBottom: 12 }}>
             {userData?.email || 'email@empresa.com'}
           </Text>
+
+          {/* Archetype Badge if exists */}
+          {arc && (
+            <View style={{
+              flexDirection: 'row', alignItems: 'center',
+              backgroundColor: arc.bg, paddingHorizontal: 16, paddingVertical: 8,
+              borderRadius: 30, marginBottom: 16, borderWidth: 1, borderColor: arc.color + '40'
+            }}>
+              <Icon name={arc.icon} size={14} color={arc.color} />
+              <Text style={{ marginLeft: 8, color: arc.color, fontWeight: '800', fontSize: 13 }}>
+                ESTILO: {arc.label.toUpperCase()}
+              </Text>
+            </View>
+          )}
 
           {/* Role pill */}
           <View style={{
@@ -2157,6 +2336,40 @@ function PerfilScreen({ onLogout }) {
           </View>
         </View>
 
+        {/* ─── MANAGER ANALYTICS (if manager/admin) ─── */}
+        {managerStats && (
+          <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A', marginBottom: 12 }}>
+              Visão do Gestor 📊
+            </Text>
+            <LinearGradient
+              colors={['#1E2D5A', '#2D3E6E']}
+              style={{ borderRadius: 20, padding: 20 }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                <View>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600' }}>MEMBROS ATIVOS</Text>
+                  <Text style={{ color: '#FFF', fontSize: 24, fontWeight: '900' }}>{managerStats.total_users || 0}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600' }}>LIÇÕES HOJE</Text>
+                  <Text style={{ color: '#34D399', fontSize: 24, fontWeight: '900' }}>+{managerStats.lessons_completed_today || 0}</Text>
+                </View>
+              </View>
+
+              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 16 }} />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600' }}>XP DA EQUIPE (MÊS)</Text>
+                  <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '800' }}>{managerStats.total_xp_month || 0} pts</Text>
+                </View>
+                <Icon name="activity" size={24} color="rgba(255,255,255,0.2)" />
+              </View>
+            </LinearGradient>
+          </View>
+        )}
+
         {/* ─── STATS GRID ─── */}
         <View style={{ paddingHorizontal: 20, marginTop: 16 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
@@ -2183,6 +2396,60 @@ function PerfilScreen({ onLogout }) {
               </View>
             ))}
           </View>
+        </View>
+
+        {/* ─── MEUS CERTIFICADOS ─── */}
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A' }}>
+              Meus Certificados 🎓
+            </Text>
+            {certificates.length > 0 && (
+              <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: '700' }}>{certificates.length} obtidos</Text>
+            )}
+          </View>
+
+          {loadingCerts ? (
+            <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 20 }} />
+          ) : certificates.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 10 }}>
+              {certificates.map((cert) => (
+                <Pressable
+                  key={cert.id}
+                  onPress={() => onOpenCert && onOpenCert(cert)}
+                  style={{
+                    width: 160, backgroundColor: '#FFF', borderRadius: 18, padding: 16,
+                    borderWidth: 1, borderColor: '#F1F5F9',
+                    shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.05, shadowRadius: 10, elevation: 3
+                  }}
+                >
+                  <View style={{
+                    width: 32, height: 32, borderRadius: 10, backgroundColor: '#DCFCE7',
+                    alignItems: 'center', justifyContent: 'center', marginBottom: 10
+                  }}>
+                    <Icon name="award" size={16} color="#129151" />
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1E2D5A', marginBottom: 4 }} numberOfLines={1}>
+                    {cert.trail_title}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#8896AB', fontWeight: '600' }}>
+                    {new Date(cert.issued_at).toLocaleDateString()}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{
+              backgroundColor: '#FFF', borderRadius: 20, padding: 24, alignItems: 'center',
+              borderWidth: 1, borderColor: '#F1F5F9', borderStyle: 'dashed'
+            }}>
+              <Icon name="award" size={32} color="#CBD5E1" />
+              <Text style={{ color: '#8896AB', fontSize: 13, textAlign: 'center', marginTop: 12, fontWeight: '500' }}>
+                Complete uma trilha para ganhar seu primeiro certificado!
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* ─── DETALHES LIST ─── */}
@@ -2361,13 +2628,13 @@ function FloatingAssistant() {
   );
 }
 
-function BottomNav({ current, onNavigate }) {
+function BottomNav({ current, onNavigate, notificationCount = 0 }) {
   const tabs = [
     { id: 'home', icon: 'home', label: 'Início' },
     { id: 'trilhas', icon: 'book-open', label: 'Aulas' },
     { id: 'ranking', icon: 'award', label: 'Ranking' },
     { id: 'loja', icon: 'shopping-bag', label: 'Loja' },
-    { id: 'perfil', icon: 'user', label: 'Perfil' },
+    { id: 'perfil', icon: 'user', label: 'Perfil', badge: notificationCount },
   ];
 
   return (
@@ -2423,10 +2690,173 @@ function BottomNav({ current, onNavigate }) {
             }}>
               {t.label}
             </Text>
+            {t.badge > 0 && (
+              <View style={{
+                position: 'absolute', top: 2, right: 10,
+                backgroundColor: '#EF4444', borderRadius: 8,
+                minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
+                paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#FFF',
+              }}>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFF' }}>
+                  {t.badge > 9 ? '9+' : t.badge}
+                </Text>
+              </View>
+            )}
           </Pressable>
         );
       })}
     </View>
+  );
+}
+
+// ─── NOTIFICATIONS SCREEN ────────────────────────────────────────────────────
+function NotificationsScreen({ navigate }) {
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case 'achievement': return { name: 'award', color: '#F59E0B', bg: '#FEF3C7' };
+      case 'streak_risk': return { name: 'zap', color: '#EF4444', bg: '#FEE2E2' };
+      case 'rank_change': return { name: 'trending-up', color: '#2563EB', bg: '#DBEAFE' };
+      case 'mission_expiring': return { name: 'target', color: '#F97316', bg: '#FFEDD5' };
+      case 'custom': return { name: 'message-square', color: '#8B5CF6', bg: '#F3E8FF' };
+      default: return { name: 'bell', color: '#6B7280', bg: '#F3F4F6' };
+    }
+  };
+
+  const formatDate = (dateStr) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMin < 1) return 'Agora';
+    if (diffMin < 60) return `${diffMin}min atrás`;
+    if (diffHours < 24) return `${diffHours}h atrás`;
+    if (diffDays < 7) return `${diffDays}d atrás`;
+    return d.toLocaleDateString('pt-BR');
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F4F7FF' }}>
+      {/* Header */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Pressable onPress={() => navigate('perfil')}>
+            <Icon name="arrow-left" size={22} color="#1E2D5A" />
+          </Pressable>
+          <View>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: '#1E2D5A', letterSpacing: -0.3 }}>
+              Notificações 🔔
+            </Text>
+            <Text style={{ fontSize: 13, color: '#8896AB', fontWeight: '500', marginTop: 2 }}>
+              {unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Tudo em dia!'}
+            </Text>
+          </View>
+        </View>
+
+        {unreadCount > 0 && (
+          <Pressable
+            onPress={markAllAsRead}
+            style={{
+              backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 6,
+              borderRadius: 12, borderWidth: 1, borderColor: '#D1FAE5',
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#129151' }}>Ler Tudo</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {notifications.length === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
+          <Icon name="bell-off" size={48} color="#D1D5DB" />
+          <Text style={{ fontSize: 17, fontWeight: '700', color: '#1E2D5A', marginTop: 16, textAlign: 'center' }}>
+            Sem notificações
+          </Text>
+          <Text style={{ fontSize: 14, color: '#8896AB', marginTop: 6, textAlign: 'center' }}>
+            Quando houver novidades, elas aparecerão aqui.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ gap: 10 }}>
+            {notifications.map(notification => {
+              const typeInfo = getTypeIcon(notification.type);
+              return (
+                <Pressable
+                  key={notification.id}
+                  onPress={() => {
+                    if (!notification.is_read) markAsRead(notification.id);
+                  }}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row', alignItems: 'flex-start',
+                    backgroundColor: notification.is_read ? '#FFF' : '#FEFFF7',
+                    borderRadius: 18, padding: 16,
+                    borderWidth: notification.is_read ? 1 : 2,
+                    borderColor: notification.is_read ? '#F1F5F9' : '#129151',
+                    shadowColor: '#1E2D5A',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
+                    opacity: pressed ? 0.9 : 1,
+                  })}
+                >
+                  {/* Icon */}
+                  <View style={{
+                    width: 44, height: 44, borderRadius: 14,
+                    backgroundColor: typeInfo.bg,
+                    alignItems: 'center', justifyContent: 'center',
+                    marginRight: 14,
+                  }}>
+                    <Icon name={typeInfo.name} size={20} color={typeInfo.color} />
+                  </View>
+
+                  {/* Content */}
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Text style={{
+                        fontSize: 14, fontWeight: notification.is_read ? '600' : '800',
+                        color: '#1E2D5A', flex: 1, marginRight: 8,
+                      }}>
+                        {notification.title}
+                      </Text>
+                      {!notification.is_read && (
+                        <View style={{
+                          width: 8, height: 8, borderRadius: 4,
+                          backgroundColor: '#129151', marginTop: 4,
+                        }} />
+                      )}
+                    </View>
+                    <Text style={{ fontSize: 13, color: '#64748B', marginTop: 4, lineHeight: 18 }}>
+                      {notification.body}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                      <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '600' }}>
+                        {formatDate(notification.created_at)}
+                      </Text>
+                      <Pressable
+                        onPress={() => deleteNotification(notification.id)}
+                        hitSlop={10}
+                      >
+                        <Icon name="trash-2" size={14} color="#CBD5E1" />
+                      </Pressable>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -2436,12 +2866,29 @@ function AppContent() {
   const [route, setRoute] = useState('login')
   const [params, setParams] = useState({})
   const { user, loading: authLoading } = useAuth()
+  const { unreadCount } = useNotifications()
+
+  // Profile Quiz state
+  const [profileQuizVisible, setProfileQuizVisible] = useState(false);
+
+  // Certificate Modal state
+  const [certificateVisible, setCertificateVisible] = useState(false);
+  const [selectedCertificate, setSelectedCertificate] = useState(null);
 
   // Simple router
   const navigate = (to, p = {}) => {
     setParams(p)
     setRoute(to)
   }
+
+  // Auto-show Profile Quiz if missing
+  useEffect(() => {
+    if (user && user.has_profile === false && route === 'home') {
+      // Delay slightly for better UX
+      const timer = setTimeout(() => setProfileQuizVisible(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [user, route]);
 
   // Auth Redirect
   useEffect(() => {
@@ -2459,17 +2906,43 @@ function AppContent() {
       {route === 'home' && <DashboardScreen navigate={navigate} />}
       {route === 'trilhas' && <TrailsScreen navigate={navigate} role={user?.role} />}
       {route === 'trail-details' && <TrailDetailsScreen trail={params} navigate={navigate} />}
-      {route === 'aula' && <LessonDetailsScreen lesson={params} navigate={navigate} />}
+      {route === 'aula' && (
+        <LessonDetailsScreen
+          lesson={params}
+          navigate={navigate}
+          onOpenCert={(cert) => { setSelectedCertificate(cert); setCertificateVisible(true); }}
+        />
+      )}
       {route === 'ranking' && <RankingScreen />}
       {route === 'loja' && <ShopScreen />}
-      {route === 'perfil' && <PerfilScreen onLogout={() => setRoute('login')} />}
+      {route === 'perfil' && (
+        <PerfilScreen
+          onLogout={() => setRoute('login')}
+          navigate={navigate}
+          onOpenCert={(cert) => { setSelectedCertificate(cert); setCertificateVisible(true); }}
+        />
+      )}
+      {route === 'notificacoes' && <NotificationsScreen navigate={navigate} />}
 
       {['home', 'trilhas', 'ranking', 'loja', 'perfil'].includes(route) && (
         <>
           <FloatingAssistant />
-          <BottomNav current={route} onNavigate={navigate} />
+          <BottomNav current={route} onNavigate={navigate} notificationCount={unreadCount} />
         </>
       )}
+
+      {/* GLOBAL MODALS */}
+      <PlayerProfileQuiz
+        visible={profileQuizVisible}
+        onClose={() => setProfileQuizVisible(false)}
+        onComplete={() => setProfileQuizVisible(false)}
+      />
+
+      <CertificateModal
+        visible={certificateVisible}
+        certificate={selectedCertificate}
+        onClose={() => setCertificateVisible(false)}
+      />
     </View>
   )
 }
@@ -2501,6 +2974,7 @@ const styles = StyleSheet.create({
   // Quiz Option Button
   optionBtn: { padding: 16, borderRadius: 12, borderWidth: 2, borderColor: COLORS.border, backgroundColor: '#FFF', marginBottom: 2 },
   lessonHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  questionTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center' },
 
   // Login
   loginContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },

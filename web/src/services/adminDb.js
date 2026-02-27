@@ -917,6 +917,73 @@ export const AdminDb = {
     }
   },
 
+  notifications: {
+    list: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*, user:users(id, name, email)')
+        .order('created_at', { ascending: false })
+        .limit(200)
+      if (error) throw error
+      return data || []
+    },
+    sendCustom: async ({ title, body, targetRole }) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase.rpc('send_custom_notification', {
+        p_title: title,
+        p_body: body,
+        p_target_role: targetRole || null
+      })
+      if (error) throw error
+      return data // returns count of users notified
+    },
+    delete: async (id) => {
+      const supabase = requireSupabase()
+      const { error } = await supabase.from('notifications').delete().eq('id', id)
+      if (error) throw error
+    },
+    getUnreadCount: async (userId) => {
+      const supabase = requireSupabase()
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_read', false)
+      if (error) throw error
+      return count || 0
+    },
+  },
+
+  certificates: {
+    list: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('certificates')
+        .select('*, user:users(id, name, email), trail:trails(id, title)')
+        .order('issued_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    revoke: async (id) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase.rpc('revoke_certificate', {
+        p_certificate_id: id
+      })
+      if (error) throw error
+      return data
+    },
+    issue: async (userId, trailId) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase.rpc('issue_trail_certificate', {
+        p_user_id: userId,
+        p_trail_id: trailId
+      })
+      if (error) throw error
+      return data
+    },
+  },
+
   franchises: {
     list: async () => {
       const supabase = requireSupabase()
@@ -944,5 +1011,138 @@ export const AdminDb = {
       const { error } = await supabase.from('franchises').delete().eq('id', id)
       if (error) throw error
     },
+  },
+
+  analytics: {
+    getManagerAnalytics: async (days = 30, roleFilter = null, trailFilter = null) => {
+      const supabase = requireSupabase()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Usuário não autenticado')
+
+      const { data, error } = await supabase.rpc('get_manager_analytics', {
+        p_manager_id: user.id,
+        p_days: days,
+        p_role_filter: roleFilter,
+        p_trail_filter: trailFilter
+      })
+      if (error) throw error
+      return data
+    },
+    getTrails: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('trails')
+        .select('id, title')
+        .eq('is_active', true)
+        .order('title')
+      if (error) throw error
+      return data || []
+    }
+  },
+
+  teams: {
+    getRanking: async () => {
+      const supabase = requireSupabase()
+      // We can pass franchise_id if we want, but for now we get all active
+      const { data, error } = await supabase.rpc('get_team_ranking', { p_limit: 50 })
+      if (error) throw error
+      return data || []
+    },
+    create: async (payload) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase.from('teams').insert(payload).select().single()
+      if (error) throw error
+      return data
+    },
+    update: async ({ id, ...updates }) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase.from('teams').update(updates).eq('id', id).select().single()
+      if (error) throw error
+      return data
+    },
+    delete: async (id) => {
+      const supabase = requireSupabase()
+      const { error } = await supabase.from('teams').delete().eq('id', id)
+      if (error) throw error
+    },
+    getMembers: async (teamId) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('user_teams')
+        .select(`
+          user_id,
+          joined_at,
+          users:user_id ( id, name, total_xp, role )
+        `)
+        .eq('team_id', teamId)
+      if (error) throw error
+      return data || []
+    },
+    addMember: async (teamId, userId) => {
+      const supabase = requireSupabase()
+
+      // Upsert: Se o usuário já estiver em um time, o unique constraint dele vai falhar 
+      // ou podemos primeiro deletar o registro antigo garantindo que ele mude de time
+      await supabase.from('user_teams').delete().eq('user_id', userId);
+
+      const { data, error } = await supabase
+        .from('user_teams')
+        .insert({ team_id: teamId, user_id: userId })
+        .select().single()
+
+      if (error) throw error
+      return data
+    },
+    removeMember: async (teamId, userId) => {
+      const supabase = requireSupabase()
+      const { error } = await supabase
+        .from('user_teams')
+        .delete()
+        .eq('team_id', teamId)
+        .eq('user_id', userId)
+      if (error) throw error
+    }
+  },
+
+  playerProfiles: {
+    getByUserId: async (userId) => {
+      const supabase = requireSupabase();
+      const { data, error } = await supabase.rpc('get_user_player_profile', { p_user_id: userId });
+      if (error) throw error;
+      return data;
+    },
+    getQuizQuestions: async () => {
+      const supabase = requireSupabase();
+      const { data, error } = await supabase.rpc('get_player_quiz_questions');
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  notifications: {
+    list: async () => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    sendCustom: async ({ title, body, targetRole = null }) => {
+      const supabase = requireSupabase()
+      const { data, error } = await supabase.rpc('send_custom_notification', {
+        p_title: title,
+        p_body: body,
+        p_target_role: targetRole,
+      })
+      if (error) throw error
+      return data // Returns number of affected users
+    },
+    delete: async (id) => {
+      const supabase = requireSupabase()
+      const { error } = await supabase.from('notifications').delete().eq('id', id)
+      if (error) throw error
+    }
   }
 }

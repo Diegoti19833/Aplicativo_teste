@@ -73,7 +73,7 @@ export const useLessons = (trailId) => {
         // Implementar lógica de desbloqueio sequencial
         const lessonsWithUnlockLogic = lessonsWithProgress.map((lesson, index) => {
           let isUnlocked = false;
-          
+
           if (index === 0) {
             // Primeira lição sempre desbloqueada
             isUnlocked = true;
@@ -120,8 +120,8 @@ export const useLessons = (trailId) => {
     try {
       const { data, error } = await supabase
         .rpc('complete_lesson', {
-          user_id_param: user.id,
-          lesson_id_param: lessonId
+          p_user_id: user.id,
+          p_lesson_id: lessonId
         });
 
       if (error) throw error;
@@ -206,7 +206,7 @@ export const useLessons = (trailId) => {
       // Recalcular lógica de desbloqueio
       const lessonsWithUnlockLogic = updatedLessons.map((lesson, index) => {
         let isUnlocked = false;
-        
+
         if (index === 0) {
           // Primeira lição sempre desbloqueada
           isUnlocked = true;

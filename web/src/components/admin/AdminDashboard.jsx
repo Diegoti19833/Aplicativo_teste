@@ -28,6 +28,8 @@ import AdminNotificacoes from './AdminNotificacoes';
 import AdminCertificados from './AdminCertificados';
 import AdminQuizBank from './AdminQuizBank';
 import AdminGamification from './AdminGamification';
+import AdminAnalytics from './AdminAnalytics';
+import AdminTimes from './AdminTimes';
 
 // ─── CountUp ────────────────────────────────────────────────────────────────
 function CountUp({ end, duration = 1500 }) {
@@ -98,6 +100,8 @@ const TAB_LABELS = {
   ranking: 'Ranking',
   missoes: 'Metas Diárias',
   conquistas: 'Marcos',
+  analytics: 'Analytics de Gestão',
+  times: 'Ranking por Equipes',
   loja: 'Loja de Prêmios',
   certificados: 'Certificados',
   gamification: 'Config. Engajamento',
@@ -691,6 +695,8 @@ function AdminDashboardInner() {
       case 'missoes': return <AdminMissoes />;
       case 'conquistas': return <AdminMarcos />;
       case 'gamification': return <AdminGamification />;
+      case 'analytics': return <AdminAnalytics />;
+      case 'times': return <AdminTimes />;
       case 'reports': return <AdminRelatorios />;
       case 'settings': return <AdminConfig />;
       default: return <DashboardHome />;
@@ -737,6 +743,8 @@ function AdminDashboardInner() {
           <SectionLabel label="Sistema" collapsed={collapsed} />
           <MenuItem icon={<Sliders />} label="Config. Engajamento" active={activeTab === 'gamification'} onClick={() => setActiveTab('gamification')} collapsed={collapsed} />
           <MenuItem icon={<Bell />} label="Notificações" active={activeTab === 'notificacoes'} onClick={() => setActiveTab('notificacoes')} collapsed={collapsed} />
+          <MenuItem icon={<BarChart3 />} label="Analytics" active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} collapsed={collapsed} />
+          <MenuItem icon={<Users />} label="Times" active={activeTab === 'times'} onClick={() => setActiveTab('times')} collapsed={collapsed} />
           <MenuItem icon={<FileText />} label="Relatórios" active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} collapsed={collapsed} />
           <MenuItem icon={<Settings2 />} label="Configurações" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} collapsed={collapsed} />
         </nav>

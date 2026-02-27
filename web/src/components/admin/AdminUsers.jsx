@@ -53,6 +53,7 @@ export default function AdminUsers() {
   const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState(null);
   const [franchisesList, setFranchisesList] = useState([]);
+  const [userProfiles, setUserProfiles] = useState({});
 
   useEffect(() => {
     // Fetch high-level stats (reuse dashboard report)
@@ -111,6 +112,31 @@ export default function AdminUsers() {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  // Load User Profiles
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      const newProfiles = { ...userProfiles };
+      let missingUsers = false;
+      for (const u of users) {
+        if (!newProfiles[u.id]) {
+          missingUsers = true;
+          try {
+            const p = await AdminDb.playerProfiles.getByUserId(u.id);
+            if (p?.has_profile) {
+              newProfiles[u.id] = p.archetype;
+            } else {
+              newProfiles[u.id] = { id: 'none', name: 'Sem Perfil' };
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+      if (missingUsers) setUserProfiles(newProfiles);
+    };
+    if (users.length > 0) fetchProfiles();
+  }, [users]);
 
   // Handlers
   const handleRoleFilterChange = (role) => {
@@ -262,6 +288,16 @@ export default function AdminUsers() {
     return { dot: 'bg-gray-300', text: 'text-gray-500' };
   };
 
+  const getArchetypeBadgeStyle = (archId) => {
+    switch (archId) {
+      case 'especialista': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'encantador': return 'bg-pink-100 text-pink-800 border-pink-200';
+      case 'estrategista': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'agil': return 'bg-orange-100 text-orange-800 border-orange-200';
+      default: return 'bg-gray-100 text-gray-500 border-gray-200';
+    }
+  };
+
   const totalPages = Math.ceil(totalUsers / pageSize);
 
   return (
@@ -333,6 +369,7 @@ export default function AdminUsers() {
                 <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Função</th>
                 <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Franquia</th>
                 <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Perfil Pop</th>
                 <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Desempenho</th>
                 <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">POPCOINS</th>
                 <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Último Acesso</th>
@@ -408,6 +445,15 @@ export default function AdminUsers() {
                         <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-red-500'}`}></span>
                         {user.is_active ? 'Ativo' : 'Inativo'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {userProfiles[user.id] && userProfiles[user.id].id !== 'none' ? (
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold border capitalize ${getArchetypeBadgeStyle(userProfiles[user.id].id)}`}>
+                          {userProfiles[user.id].name}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Pendente</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
