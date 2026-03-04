@@ -652,7 +652,7 @@ export const AdminDb = {
   },
 
   purchases: {
-    list: async ({ userId, fromIso, toIso } = {}) => {
+    list: async ({ userId, fromIso, toIso, status } = {}) => {
       const supabase = requireSupabase()
       let query = supabase
         .from('user_purchases')
@@ -661,9 +661,24 @@ export const AdminDb = {
       if (userId) query = query.eq('user_id', userId)
       if (fromIso) query = query.gte('purchase_date', fromIso)
       if (toIso) query = query.lte('purchase_date', toIso)
+      if (status) query = query.eq('status', status)
       const { data, error } = await query
       if (error) throw error
       return data || []
+    },
+    updateStatus: async ({ id, status, adminNotes }) => {
+      const supabase = requireSupabase()
+      const payload = {}
+      if (status !== undefined) payload.status = status
+      if (adminNotes !== undefined) payload.admin_notes = adminNotes
+      const { data, error } = await supabase
+        .from('user_purchases')
+        .update(payload)
+        .eq('id', id)
+        .select('*, user:users(id,name,email), item:store_items(id,name,title,icon,image_url,price)')
+        .single()
+      if (error) throw error
+      return data
     },
   },
 

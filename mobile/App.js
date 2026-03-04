@@ -1964,9 +1964,13 @@ function RankingScreen() {
 }
 
 function ShopScreen() {
+  const { user } = useAuth();
   const { userData, refetch: refetchUser } = useUserData();
-  const { items: storeItems, loading, purchaseItem, hasItem } = useStore();
+  const { items: storeItems, loading, purchaseItem, hasItem, userItems } = useStore();
   const [buying, setBuying] = useState(null);
+  const [activeTab, setActiveTab] = useState('loja');
+  const [myOrders, setMyOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   const FALLBACK_ITEMS = [
     { id: 1, name: 'Dobro de Pontos (24h)', price: 10, icon_emoji: '⚡', description: 'Ganhe o dobro de XP por 24 horas' },
@@ -1987,6 +1991,36 @@ function ShopScreen() {
     { bg: '#F3E8FF', color: '#A855F7' },
     { bg: '#FFEDD5', color: '#F97316' },
   ];
+
+  const STATUS_CONFIG = {
+    pendente: { label: 'Pendente', emoji: '🟡', bg: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' },
+    aprovado: { label: 'Aprovado', emoji: '🟢', bg: '#DCFCE7', color: '#166534', borderColor: '#86EFAC' },
+    enviado: { label: 'Enviado', emoji: '🔵', bg: '#DBEAFE', color: '#1E40AF', borderColor: '#93C5FD' },
+    entregue: { label: 'Entregue', emoji: '✅', bg: '#D1FAE5', color: '#065F46', borderColor: '#6EE7B7' },
+    cancelado: { label: 'Cancelado', emoji: '🔴', bg: '#FEE2E2', color: '#991B1B', borderColor: '#FCA5A5' },
+  };
+
+  const fetchOrders = async () => {
+    if (!user) return;
+    setLoadingOrders(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_purchases')
+        .select('*, item:store_items(id, name, icon, image_url, price)')
+        .eq('user_id', user.id)
+        .order('purchase_date', { ascending: false });
+      if (error) throw error;
+      setMyOrders(data || []);
+    } catch (e) {
+      console.log('Erro ao buscar pedidos:', e);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'pedidos') fetchOrders();
+  }, [activeTab, user]);
 
   const handleBuy = async (item) => {
     if ((userData?.coins || 0) < item.price) return Alert.alert('POPCOIN insuficientes', `Você precisa de ${item.price} POPCOIN.`);
@@ -2048,95 +2082,227 @@ function ShopScreen() {
         </LinearGradient>
       </View>
 
-      {/* ─── ITEMS ─── */}
-      {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#8896AB', fontSize: 15 }}>Carregando loja...</Text>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, gap: 12 }}
-          showsVerticalScrollIndicator={false}
+      {/* ─── TABS ─── */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 20, marginBottom: 14, gap: 10 }}>
+        <Pressable
+          onPress={() => setActiveTab('loja')}
+          style={({ pressed }) => ({
+            flex: 1, backgroundColor: activeTab === 'loja' ? '#129151' : '#FFF',
+            paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+            borderWidth: 1, borderColor: activeTab === 'loja' ? '#129151' : '#E5E7EB',
+            opacity: pressed ? 0.85 : 1,
+          })}
         >
-          <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A', marginBottom: 4 }}>
-            Itens disponíveis
-          </Text>
+          <Text style={{ color: activeTab === 'loja' ? '#FFF' : '#64748B', fontWeight: '700', fontSize: 13 }}>🛒 Loja</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setActiveTab('pedidos')}
+          style={({ pressed }) => ({
+            flex: 1, backgroundColor: activeTab === 'pedidos' ? '#129151' : '#FFF',
+            paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+            borderWidth: 1, borderColor: activeTab === 'pedidos' ? '#129151' : '#E5E7EB',
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <Text style={{ color: activeTab === 'pedidos' ? '#FFF' : '#64748B', fontWeight: '700', fontSize: 13 }}>📋 Meus Pedidos</Text>
+        </Pressable>
+      </View>
 
-          {items.map((item, idx) => {
-            const pal = ITEM_COLORS[idx % ITEM_COLORS.length];
-            const canAfford = coins >= item.price;
-            const isBuying = buying === item.id;
-            const alreadyOwned = hasItem(item.id);
-            // allow buying again for consumable items
-            const isDisabled = !canAfford || isBuying;
+      {/* ─── CONTENT ─── */}
+      {activeTab === 'loja' ? (
+        /* ═══ LOJA TAB ═══ */
+        loading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#8896AB', fontSize: 15 }}>Carregando loja...</Text>
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, gap: 12 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A', marginBottom: 4 }}>
+              Itens disponíveis
+            </Text>
 
-            return (
-              <View key={item.id} style={{
-                backgroundColor: '#FFF', borderRadius: 20, padding: 16,
-                shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.07, shadowRadius: 12, elevation: 4,
-                flexDirection: 'row', alignItems: 'center', gap: 14,
-              }}>
-                {/* Item image or emoji fallback */}
-                <View style={{
-                  width: 58, height: 58, borderRadius: 18,
-                  backgroundColor: pal.bg, alignItems: 'center', justifyContent: 'center',
-                  overflow: 'hidden',
+            {items.map((item, idx) => {
+              const pal = ITEM_COLORS[idx % ITEM_COLORS.length];
+              const canAfford = coins >= item.price;
+              const isBuying = buying === item.id;
+              const alreadyOwned = hasItem(item.id);
+              const isDisabled = !canAfford || isBuying;
+
+              return (
+                <View key={item.id} style={{
+                  backgroundColor: '#FFF', borderRadius: 20, padding: 16,
+                  shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.07, shadowRadius: 12, elevation: 4,
+                  flexDirection: 'row', alignItems: 'center', gap: 14,
                 }}>
-                  {item.image_url ? (
-                    <Image source={{ uri: item.image_url }} style={{ width: 58, height: 58 }} resizeMode="cover" />
-                  ) : (
-                    <Text style={{ fontSize: 28 }}>{item.icon_emoji || item.icon || '🎁'}</Text>
-                  )}
-                </View>
-
-                {/* Info */}
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E2D5A', marginBottom: 2 }}>
-                    {item.name}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#8896AB', lineHeight: 16, marginBottom: 6 }}>
-                    {item.description}
-                  </Text>
-                  {/* Price pill */}
                   <View style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 4,
-                    backgroundColor: canAfford ? '#FEF3C7' : '#F1F5F9',
-                    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
-                    alignSelf: 'flex-start',
+                    width: 58, height: 58, borderRadius: 18,
+                    backgroundColor: pal.bg, alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden',
                   }}>
-                    <Text style={{ fontSize: 13 }}>🪙</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: canAfford ? '#F59E0B' : '#94A3B8' }}>
-                      {item.price}
+                    {item.image_url ? (
+                      <Image source={{ uri: item.image_url }} style={{ width: 58, height: 58 }} resizeMode="cover" />
+                    ) : (
+                      <Text style={{ fontSize: 28 }}>{item.icon_emoji || item.icon || '🎁'}</Text>
+                    )}
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E2D5A', marginBottom: 2 }}>
+                      {item.name}
                     </Text>
+                    <Text style={{ fontSize: 12, color: '#8896AB', lineHeight: 16, marginBottom: 6 }}>
+                      {item.description}
+                    </Text>
+                    <View style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 4,
+                      backgroundColor: canAfford ? '#FEF3C7' : '#F1F5F9',
+                      paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
+                      alignSelf: 'flex-start',
+                    }}>
+                      <Text style={{ fontSize: 13 }}>🪙</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: canAfford ? '#F59E0B' : '#94A3B8' }}>
+                        {item.price}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    onPress={() => handleBuy(item)}
+                    disabled={isDisabled}
+                    style={({ pressed }) => ({
+                      backgroundColor: canAfford ? '#129151' : '#E2E8F0',
+                      paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14,
+                      opacity: pressed ? 0.85 : 1,
+                      shadowColor: canAfford ? '#129151' : 'transparent',
+                      shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 4,
+                    })}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: canAfford ? '#FFF' : '#94A3B8' }}>
+                      {isBuying ? '...' : (canAfford ? 'Comprar' : 'Sem saldo')}
+                    </Text>
+                    {alreadyOwned && (
+                      <Text style={{ fontSize: 9, color: canAfford ? 'rgba(255,255,255,0.7)' : '#94A3B8', textAlign: 'center', marginTop: 2, fontWeight: '600' }}>
+                        (Você já tem)
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+              );
+            })}
+          </ScrollView>
+        )
+      ) : (
+        /* ═══ MEUS PEDIDOS TAB ═══ */
+        loadingOrders ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#8896AB', fontSize: 15 }}>Carregando pedidos...</Text>
+          </View>
+        ) : myOrders.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
+            <Text style={{ fontSize: 48, marginBottom: 16 }}>📦</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E2D5A', textAlign: 'center', marginBottom: 6 }}>
+              Nenhum pedido ainda
+            </Text>
+            <Text style={{ fontSize: 13, color: '#8896AB', textAlign: 'center' }}>
+              Compre itens na loja e acompanhe seus pedidos aqui!
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100, gap: 12 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A', marginBottom: 4 }}>
+              Histórico de Compras ({myOrders.length})
+            </Text>
+
+            {myOrders.map((order, idx) => {
+              const status = order.status || 'pendente';
+              const sc = STATUS_CONFIG[status] || STATUS_CONFIG.pendente;
+              const itemName = order.item?.name || 'Item';
+              const itemIcon = order.item?.icon || '🎁';
+              const pal = ITEM_COLORS[idx % ITEM_COLORS.length];
+
+              return (
+                <View key={order.id} style={{
+                  backgroundColor: '#FFF', borderRadius: 20, padding: 16,
+                  shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.07, shadowRadius: 12, elevation: 4,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                    {/* Item icon */}
+                    <View style={{
+                      width: 48, height: 48, borderRadius: 14,
+                      backgroundColor: pal.bg, alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}>
+                      {order.item?.image_url ? (
+                        <Image source={{ uri: order.item.image_url }} style={{ width: 48, height: 48 }} resizeMode="cover" />
+                      ) : (
+                        <Text style={{ fontSize: 22 }}>{itemIcon}</Text>
+                      )}
+                    </View>
+
+                    {/* Info */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E2D5A' }}>
+                        {itemName}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: '#8896AB', marginTop: 2 }}>
+                        {order.purchase_date ? new Date(order.purchase_date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                      </Text>
+                    </View>
+
+                    {/* Price */}
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={{ fontSize: 12 }}>🪙</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#F59E0B' }}>
+                          {order.total_price || order.unit_price || 0}
+                        </Text>
+                      </View>
+                      {order.quantity > 1 && (
+                        <Text style={{ fontSize: 10, color: '#8896AB', marginTop: 2 }}>
+                          x{order.quantity}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Status badge */}
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9',
+                  }}>
+                    <View style={{
+                      backgroundColor: sc.bg, paddingHorizontal: 12, paddingVertical: 6,
+                      borderRadius: 10, borderWidth: 1, borderColor: sc.borderColor,
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                    }}>
+                      <Text style={{ fontSize: 12 }}>{sc.emoji}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: sc.color }}>
+                        {sc.label}
+                      </Text>
+                    </View>
+
+                    {order.admin_notes ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '50%' }}>
+                        <Text style={{ fontSize: 10 }}>💬</Text>
+                        <Text style={{ fontSize: 11, color: '#64748B', fontStyle: 'italic' }} numberOfLines={1}>
+                          {order.admin_notes}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
-
-                {/* Buy button */}
-                <Pressable
-                  onPress={() => handleBuy(item)}
-                  disabled={isDisabled}
-                  style={({ pressed }) => ({
-                    backgroundColor: canAfford ? '#129151' : '#E2E8F0',
-                    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14,
-                    opacity: pressed ? 0.85 : 1,
-                    shadowColor: canAfford ? '#129151' : 'transparent',
-                    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 4,
-                  })}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: canAfford ? '#FFF' : '#94A3B8' }}>
-                    {isBuying ? '...' : (canAfford ? 'Comprar' : 'Sem saldo')}
-                  </Text>
-                  {alreadyOwned && (
-                    <Text style={{ fontSize: 9, color: canAfford ? 'rgba(255,255,255,0.7)' : '#94A3B8', textAlign: 'center', marginTop: 2, fontWeight: '600' }}>
-                      (Você já tem)
-                    </Text>
-                  )}
-                </Pressable>
-              </View>
-            );
-          })}
-        </ScrollView>
+              );
+            })}
+          </ScrollView>
+        )
       )}
     </SafeAreaView>
   );

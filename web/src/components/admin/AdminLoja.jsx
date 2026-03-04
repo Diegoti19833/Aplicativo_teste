@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Gift, Plus, Edit3, Trash2, Package, ToggleLeft, ToggleRight, AlertTriangle, TrendingUp, Star, Search, Filter, Award, ShoppingBag, X, ImagePlus, Upload, Trash } from 'lucide-react';
+import { Gift, Plus, Edit3, Trash2, Package, ToggleLeft, ToggleRight, AlertTriangle, TrendingUp, Star, Search, Filter, Award, ShoppingBag, X, ImagePlus, Upload, Trash, ClipboardList, ChevronDown, MessageSquare, CheckCircle2, Clock, Truck, XCircle } from 'lucide-react';
 import { AdminDb } from '../../services/adminDb';
 import { useToast } from './ToastContext';
 
@@ -35,6 +35,9 @@ export default function AdminLoja() {
   const [form, setForm] = useState({ name: '', description: '', icon: '🎁', image_url: '', itemType: 'fisico', price: 50, rarity: 'padrao', stockQuantity: '', purchaseLimit: 1 });
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('todos');
+  const [editingNotes, setEditingNotes] = useState(null);
+  const [notesText, setNotesText] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
@@ -272,8 +275,8 @@ export default function AdminLoja() {
 
           {/* View Toggle */}
           <div className="flex gap-2 mb-6 border-b border-gray-100 pb-1">
-            <button onClick={() => setActiveView('items')} className={`px-6 py-2 rounded-t-lg font-medium transition-all ${activeView === 'items' ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50' : 'text-gray-500 hover:text-gray-800'}`}>Itens da Loja</button>
-            <button onClick={() => setActiveView('purchases')} className={`px-6 py-2 rounded-t-lg font-medium transition-all ${activeView === 'purchases' ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50' : 'text-gray-500 hover:text-gray-800'}`}>Histórico de Vendas</button>
+            <button onClick={() => setActiveView('items')} className={`px-6 py-2 rounded-t-lg font-medium transition-all flex items-center gap-2 ${activeView === 'items' ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50' : 'text-gray-500 hover:text-gray-800'}`}><Gift size={16} /> Itens da Loja</button>
+            <button onClick={() => setActiveView('purchases')} className={`px-6 py-2 rounded-t-lg font-medium transition-all flex items-center gap-2 ${activeView === 'purchases' ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50' : 'text-gray-500 hover:text-gray-800'}`}><ClipboardList size={16} /> Pedidos ({purchases.length})</button>
           </div>
 
           {activeView === 'items' ? (
@@ -319,39 +322,142 @@ export default function AdminLoja() {
               ))}
             </div>
           ) : (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-gray-50/50 border-b border-gray-100">
-                  <tr>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Item</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Usuário</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Valor</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Data</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {purchases.map(p => (
-                    <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          {p.item ? <ItemImage item={p.item} size="sm" /> : <span className="text-2xl">🎁</span>}
-                          <span className="font-semibold text-gray-900">{p.item?.name || 'Item Removido'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{p.user?.name}</div>
-                        <div className="text-xs text-gray-500">{p.user?.email}</div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="font-bold text-brand">{p.total_price} pts</span>
-                      </td>
-                      <td className="px-6 py-4 text-right text-sm text-gray-500">
-                        {new Date(p.purchase_date).toLocaleDateString('pt-BR')}
-                      </td>
+            <div>
+              {/* Status Filters */}
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {['todos', 'pendente', 'aprovado', 'enviado', 'entregue', 'cancelado'].map(s => {
+                  const statusConfig = {
+                    todos: { label: 'Todos', icon: <ClipboardList size={14} />, color: 'gray' },
+                    pendente: { label: 'Pendente', icon: <Clock size={14} />, color: 'yellow' },
+                    aprovado: { label: 'Aprovado', icon: <CheckCircle2 size={14} />, color: 'green' },
+                    enviado: { label: 'Enviado', icon: <Truck size={14} />, color: 'blue' },
+                    entregue: { label: 'Entregue', icon: <CheckCircle2 size={14} />, color: 'emerald' },
+                    cancelado: { label: 'Cancelado', icon: <XCircle size={14} />, color: 'red' },
+                  };
+                  const cfg = statusConfig[s];
+                  const count = s === 'todos' ? purchases.length : purchases.filter(p => (p.status || 'pendente') === s).length;
+                  const active = statusFilter === s;
+                  return (
+                    <button key={s} onClick={() => setStatusFilter(s)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all border ${active ? `bg-${cfg.color}-100 text-${cfg.color}-700 border-${cfg.color}-200` : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                        }`}
+                      style={active ? {
+                        backgroundColor: cfg.color === 'yellow' ? '#fef9c3' : cfg.color === 'green' ? '#dcfce7' : cfg.color === 'blue' ? '#dbeafe' : cfg.color === 'emerald' ? '#d1fae5' : cfg.color === 'red' ? '#fee2e2' : '#f3f4f6',
+                        color: cfg.color === 'yellow' ? '#a16207' : cfg.color === 'green' ? '#15803d' : cfg.color === 'blue' ? '#1d4ed8' : cfg.color === 'emerald' ? '#047857' : cfg.color === 'red' ? '#b91c1c' : '#374151'
+                      } : {}}
+                    >
+                      {cfg.icon} {cfg.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50/50 border-b border-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Item</th>
+                      <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Usuário</th>
+                      <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Valor</th>
+                      <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Data</th>
+                      <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Obs.</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {purchases
+                      .filter(p => statusFilter === 'todos' || (p.status || 'pendente') === statusFilter)
+                      .map(p => {
+                        const currentStatus = p.status || 'pendente';
+                        const statusStyles = {
+                          pendente: { bg: '#fef9c3', text: '#a16207', icon: <Clock size={12} /> },
+                          aprovado: { bg: '#dcfce7', text: '#15803d', icon: <CheckCircle2 size={12} /> },
+                          enviado: { bg: '#dbeafe', text: '#1d4ed8', icon: <Truck size={12} /> },
+                          entregue: { bg: '#d1fae5', text: '#047857', icon: <CheckCircle2 size={12} /> },
+                          cancelado: { bg: '#fee2e2', text: '#b91c1c', icon: <XCircle size={12} /> },
+                        };
+                        const st = statusStyles[currentStatus] || statusStyles.pendente;
+                        return (
+                          <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                {p.item ? <ItemImage item={p.item} size="sm" /> : <span className="text-xl">🎁</span>}
+                                <span className="font-semibold text-gray-900 text-sm">{p.item?.name || 'Item Removido'}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-sm font-medium text-gray-900">{p.user?.name || '-'}</div>
+                              <div className="text-xs text-gray-400">{p.user?.email || ''}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-bold text-brand text-sm">{p.total_price || p.unit_price || 0} pts</span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-500">
+                              {p.purchase_date ? new Date(p.purchase_date).toLocaleDateString('pt-BR') : '-'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <select
+                                value={currentStatus}
+                                onChange={async (e) => {
+                                  try {
+                                    await AdminDb.purchases.updateStatus({ id: p.id, status: e.target.value });
+                                    loadData();
+                                    toast.success(`Status atualizado para ${e.target.value}`);
+                                  } catch (err) { toast.error('Erro ao atualizar status', err?.message); }
+                                }}
+                                className="text-xs font-bold rounded-lg px-2 py-1.5 border cursor-pointer focus:ring-2 focus:ring-orange-500"
+                                style={{ backgroundColor: st.bg, color: st.text, borderColor: st.text + '40' }}
+                              >
+                                <option value="pendente">🟡 Pendente</option>
+                                <option value="aprovado">🟢 Aprovado</option>
+                                <option value="enviado">🔵 Enviado</option>
+                                <option value="entregue">✅ Entregue</option>
+                                <option value="cancelado">🔴 Cancelado</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-3">
+                              {editingNotes === p.id ? (
+                                <div className="flex gap-1">
+                                  <input
+                                    type="text"
+                                    value={notesText}
+                                    onChange={e => setNotesText(e.target.value)}
+                                    onKeyDown={async e => {
+                                      if (e.key === 'Enter') {
+                                        try {
+                                          await AdminDb.purchases.updateStatus({ id: p.id, adminNotes: notesText });
+                                          setEditingNotes(null);
+                                          loadData();
+                                          toast.success('Observação salva!');
+                                        } catch (err) { toast.error('Erro', err?.message); }
+                                      }
+                                      if (e.key === 'Escape') setEditingNotes(null);
+                                    }}
+                                    className="text-xs border rounded px-2 py-1 w-32 focus:ring-1 focus:ring-orange-500"
+                                    placeholder="Observação..."
+                                    autoFocus
+                                  />
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => { setEditingNotes(p.id); setNotesText(p.admin_notes || ''); }}
+                                  className="text-xs text-gray-400 hover:text-orange-600 flex items-center gap-1 transition-colors"
+                                  title={p.admin_notes || 'Adicionar observação'}
+                                >
+                                  <MessageSquare size={14} />
+                                  {p.admin_notes ? <span className="max-w-[80px] truncate text-gray-600">{p.admin_notes}</span> : <span>Adicionar</span>}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {purchases.filter(p => statusFilter === 'todos' || (p.status || 'pendente') === statusFilter).length === 0 && (
+                      <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-400 text-sm">Nenhum pedido encontrado</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
