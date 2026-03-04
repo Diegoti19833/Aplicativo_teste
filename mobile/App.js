@@ -2056,7 +2056,7 @@ function ShopScreen() {
       {/* ─── SALDO BANNER ─── */}
       <View style={{ paddingHorizontal: 20, paddingVertical: 14 }}>
         <LinearGradient
-          colors={['#F59E0B', '#FBBF24']}
+          colors={['#129151', '#34D399']}
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
           style={{ borderRadius: 20, padding: 18, flexDirection: 'row', alignItems: 'center' }}
         >
