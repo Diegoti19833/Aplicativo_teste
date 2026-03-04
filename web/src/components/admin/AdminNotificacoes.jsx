@@ -20,8 +20,10 @@ import {
   Download
 } from 'lucide-react';
 import { AdminDb } from '../../services/adminDb';
+import { useToast } from './ToastContext';
 
 const AdminNotificacoes = () => {
+  const toast = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all'); // all, unread, custom
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,6 +68,11 @@ const AdminNotificacoes = () => {
   // ─── Enviar notificação customizada via Supabase RPC ───
   const handleSend = async (e) => {
     e.preventDefault();
+    if (!formData.title || !formData.message) {
+      toast.warning('Campos obrigatórios', 'Por favor, preencha o título e a mensagem.');
+      return;
+    }
+
     setSending(true);
     try {
       const targetRole = formData.audience === 'all' ? null : formData.audience;
@@ -75,10 +82,10 @@ const AdminNotificacoes = () => {
         targetRole
       });
       closeModal();
-      alert(`Notificação enviada para ${count} usuário(s)!`);
+      toast.success('Sucesso', `Notificação enviada para ${count} usuário(s)!`);
       loadNotifications();
     } catch (e) {
-      alert('Erro ao enviar: ' + (e?.message || 'Falha desconhecida'));
+      toast.error('Erro ao enviar', e?.message || 'Falha ao processar o envio.');
     } finally {
       setSending(false);
     }
@@ -89,8 +96,9 @@ const AdminNotificacoes = () => {
     try {
       await AdminDb.notifications.delete(id);
       setNotifications(prev => prev.filter(item => item.id !== id));
+      toast.success('Excluída', 'Notificação removida com sucesso.');
     } catch (e) {
-      alert('Erro ao excluir: ' + (e?.message || ''));
+      toast.error('Erro ao excluir', e?.message || 'Não foi possível completar a exclusão.');
     }
   };
 
@@ -282,10 +290,10 @@ const AdminNotificacoes = () => {
             >
               <div className="flex items-start gap-4">
                 <div className={`p-3 rounded-xl flex-shrink-0 ${item.type === 'achievement' ? 'bg-yellow-50' :
-                    item.type === 'streak_risk' ? 'bg-red-50' :
-                      item.type === 'rank_change' ? 'bg-blue-50' :
-                        item.type === 'mission_expiring' ? 'bg-orange-50' :
-                          'bg-purple-50'
+                  item.type === 'streak_risk' ? 'bg-red-50' :
+                    item.type === 'rank_change' ? 'bg-blue-50' :
+                      item.type === 'mission_expiring' ? 'bg-orange-50' :
+                        'bg-purple-50'
                   }`}>
                   {getTypeIcon(item.type)}
                 </div>

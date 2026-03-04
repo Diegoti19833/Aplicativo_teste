@@ -140,9 +140,9 @@ const Card = ({ children, style, onPress }) => {
   )
 }
 
-import Feather from 'react-native-vector-icons/Feather';
+import { Feather } from '@expo/vector-icons';
 
-// Professional Icons (Now using Vector Icons)
+// Professional Icons (Standardized for Expo)
 const Icon = ({ name, size = 20, color = COLORS.textSecondary }) => {
   return <Feather name={name} size={size} color={color} />;
 };
@@ -1964,20 +1964,20 @@ function RankingScreen() {
 }
 
 function ShopScreen() {
-  const { user } = useAuth();
   const { userData, refetch: refetchUser } = useUserData();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { items: storeItems, loading, purchaseItem, hasItem } = useStore();
   const [buying, setBuying] = useState(null);
 
   const FALLBACK_ITEMS = [
-    { id: 1, name: 'Dobro de Pontos (24h)', price: 50, icon_emoji: '⚡', description: 'Ganhe o dobro de XP por 24 horas' },
-    { id: 2, name: 'Congelar Sequência', price: 200, icon_emoji: '❄️', description: 'Proteja sua sequência por 1 dia' },
-    { id: 3, name: 'Vida Extra', price: 100, icon_emoji: '❤️', description: 'Uma chance a mais no quiz' },
-    { id: 4, name: 'Certificado Pro', price: 500, icon_emoji: '📜', description: 'Exibir conquista no perfil' },
-    { id: 5, name: 'Boost de Aula', price: 80, icon_emoji: '🚀', description: 'Complete aulas 2x mais rápido' },
-    { id: 6, name: 'Theme Especial', price: 300, icon_emoji: '🎨', description: 'Personalize sua interface' },
+    { id: 1, name: 'Dobro de Pontos (24h)', price: 10, icon_emoji: '⚡', description: 'Ganhe o dobro de XP por 24 horas' },
+    { id: 2, name: 'Congelar Sequência', price: 20, icon_emoji: '❄️', description: 'Proteja sua sequência por 1 dia' },
+    { id: 3, name: 'Vida Extra', price: 15, icon_emoji: '❤️', description: 'Uma chance a mais no quiz' },
+    { id: 4, name: 'Certificado Pro', price: 50, icon_emoji: '📜', description: 'Exibir conquista no perfil' },
+    { id: 5, name: 'Boost de Aula', price: 25, icon_emoji: '🚀', description: 'Complete aulas 2x mais rápido' },
+    { id: 6, name: 'Theme Especial', price: 30, icon_emoji: '🎨', description: 'Personalize sua interface' },
   ];
+
+  const items = storeItems?.length > 0 ? storeItems : FALLBACK_ITEMS;
 
   const ITEM_COLORS = [
     { bg: '#FEF3C7', color: '#F59E0B' },
@@ -1988,29 +1988,21 @@ function ShopScreen() {
     { bg: '#FFEDD5', color: '#F97316' },
   ];
 
-  useEffect(() => {
-    const fetchItems = async () => {
-      try {
-        const { data } = await supabase.from('store_items').select('*').eq('is_available', true).order('price');
-        setItems(data?.length > 0 ? data : FALLBACK_ITEMS);
-      } catch { setItems(FALLBACK_ITEMS); }
-      finally { setLoading(false); }
-    };
-    fetchItems();
-  }, []);
-
   const handleBuy = async (item) => {
-    if (!user) return Alert.alert('Erro', 'Faça login para comprar');
     if ((userData?.coins || 0) < item.price) return Alert.alert('POPCOIN insuficientes', `Você precisa de ${item.price} POPCOIN.`);
     setBuying(item.id);
-    try {
-      const { error } = await supabase.from('user_purchases').insert({ user_id: user.id, item_id: item.id, purchased_at: new Date().toISOString() });
-      if (error) throw error;
-      await supabase.from('users').update({ coins: (userData?.coins || 0) - item.price }).eq('id', user.id);
+
+    const result = await purchaseItem(item.id);
+
+    if (result.success && result.data?.success !== false) {
       await refetchUser();
       Alert.alert('Compra realizada! 🎉', `${item.name} adquirido com sucesso!`);
-    } catch (e) { Alert.alert('Erro', 'Não foi possível completar a compra.'); }
-    finally { setBuying(null); }
+    } else {
+      const errorMsg = result.data?.error || result.error || 'Não foi possível completar a compra.';
+      Alert.alert('Erro', errorMsg);
+    }
+
+    setBuying(null);
   };
 
   const coins = userData?.coins || 0;
@@ -2074,6 +2066,9 @@ function ShopScreen() {
             const pal = ITEM_COLORS[idx % ITEM_COLORS.length];
             const canAfford = coins >= item.price;
             const isBuying = buying === item.id;
+            const alreadyOwned = hasItem(item.id);
+            // allow buying again for consumable items
+            const isDisabled = !canAfford || isBuying;
 
             return (
               <View key={item.id} style={{
@@ -2120,7 +2115,7 @@ function ShopScreen() {
                 {/* Buy button */}
                 <Pressable
                   onPress={() => handleBuy(item)}
-                  disabled={!canAfford || isBuying}
+                  disabled={isDisabled}
                   style={({ pressed }) => ({
                     backgroundColor: canAfford ? '#129151' : '#E2E8F0',
                     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14,
@@ -2130,8 +2125,13 @@ function ShopScreen() {
                   })}
                 >
                   <Text style={{ fontSize: 12, fontWeight: '800', color: canAfford ? '#FFF' : '#94A3B8' }}>
-                    {isBuying ? '...' : canAfford ? 'Comprar' : 'Sem saldo'}
+                    {isBuying ? '...' : (canAfford ? 'Comprar' : 'Sem saldo')}
                   </Text>
+                  {alreadyOwned && (
+                    <Text style={{ fontSize: 9, color: canAfford ? 'rgba(255,255,255,0.7)' : '#94A3B8', textAlign: 'center', marginTop: 2, fontWeight: '600' }}>
+                      (Você já tem)
+                    </Text>
+                  )}
                 </Pressable>
               </View>
             );
@@ -2455,13 +2455,36 @@ function PerfilScreen({ onLogout, navigate, onOpenCert }) {
         {/* ─── DETALHES LIST ─── */}
         <View style={{ paddingHorizontal: 20, marginTop: 16 }}>
           <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E2D5A', marginBottom: 12 }}>
-            Detalhes da conta
+            Configurações e Detalhes
           </Text>
           <View style={{
             backgroundColor: '#FFF', borderRadius: 20, overflow: 'hidden',
             shadowColor: '#1E2D5A', shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
           }}>
+            <Pressable
+              onPress={() => navigate('notificacoes')}
+              style={({ pressed }) => ({
+                flexDirection: 'row', alignItems: 'center', padding: 16,
+                borderBottomWidth: 1, borderBottomColor: '#F4F7FF',
+                backgroundColor: pressed ? '#F8FAFC' : '#FFF'
+              })}
+            >
+              <View style={{
+                width: 36, height: 36, borderRadius: 18,
+                backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12,
+              }}>
+                <Icon name="bell" size={17} color="#129151" />
+              </View>
+              <Text style={{ flex: 1, fontSize: 14, color: '#1E2D5A', fontWeight: '700' }}>Notificações</Text>
+              {unreadCount > 0 && (
+                <View style={{ backgroundColor: '#EF4444', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, marginRight: 8 }}>
+                  <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>{unreadCount}</Text>
+                </View>
+              )}
+              <Icon name="chevron-right" size={16} color="#CBD5E1" />
+            </Pressable>
+
             {[
               { icon: 'trending-up', label: 'Recorde de Sequência', value: `${userData?.max_streak || 0} dias`, color: '#EF4444', bg: '#FEE2E2' },
               { icon: 'check-circle', label: 'Quizzes Realizados', value: `${userData?.quizzes_completed || 0}`, color: '#16A34A', bg: '#DCFCE7' },

@@ -33,8 +33,26 @@ CREATE POLICY "Users can update their own notifications"
     TO authenticated
     USING (user_id = auth.uid());
 
--- Apenas admins/gerentes podem inserir/deletar notificações manualmente
-CREATE POLICY "Admins and managers can insert notifications"
+-- Permissões para Admins e Gerentes (Inserir, Deletar, Update em tudo)
+DROP POLICY IF EXISTS "Admins and managers can insert notifications" ON notifications;
+CREATE POLICY "Admins and managers can manage all notifications"
+    ON notifications FOR ALL
+    TO authenticated
+    USING (
+        role IN ('admin', 'gerente')
+    )
+    WITH CHECK (
+        role IN ('admin', 'gerente')
+    );
+
+-- Nota: A política acima assume que 'role' existe no contexto ou via subquery. 
+-- Como a tabela notifications não tem a coluna role, precisamos da subquery 
+-- ou usar a função is_admin() se ela já estiver definida. 
+-- Vamos usar a subquery direta que é mais garantida se o arquivo for rodado isolado,
+-- mas com as correções de DROP POLICY.
+
+DROP POLICY IF EXISTS "Admins and managers can manage all notifications" ON notifications;
+CREATE POLICY "Admins and managers can manage all notifications"
     ON notifications FOR ALL
     TO authenticated
     USING (

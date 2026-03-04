@@ -917,43 +917,7 @@ export const AdminDb = {
     }
   },
 
-  notifications: {
-    list: async () => {
-      const supabase = requireSupabase()
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*, user:users(id, name, email)')
-        .order('created_at', { ascending: false })
-        .limit(200)
-      if (error) throw error
-      return data || []
-    },
-    sendCustom: async ({ title, body, targetRole }) => {
-      const supabase = requireSupabase()
-      const { data, error } = await supabase.rpc('send_custom_notification', {
-        p_title: title,
-        p_body: body,
-        p_target_role: targetRole || null
-      })
-      if (error) throw error
-      return data // returns count of users notified
-    },
-    delete: async (id) => {
-      const supabase = requireSupabase()
-      const { error } = await supabase.from('notifications').delete().eq('id', id)
-      if (error) throw error
-    },
-    getUnreadCount: async (userId) => {
-      const supabase = requireSupabase()
-      const { count, error } = await supabase
-        .from('notifications')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('is_read', false)
-      if (error) throw error
-      return count || 0
-    },
-  },
+
 
   certificates: {
     list: async () => {
@@ -1124,8 +1088,9 @@ export const AdminDb = {
       const supabase = requireSupabase()
       const { data, error } = await supabase
         .from('notifications')
-        .select('*')
+        .select('*, user:users(id, name, email)')
         .order('created_at', { ascending: false })
+        .limit(200)
       if (error) throw error
       return data || []
     },
@@ -1143,6 +1108,16 @@ export const AdminDb = {
       const supabase = requireSupabase()
       const { error } = await supabase.from('notifications').delete().eq('id', id)
       if (error) throw error
+    },
+    getUnreadCount: async (userId) => {
+      const supabase = requireSupabase()
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_read', false)
+      if (error) throw error
+      return count || 0
     }
   }
 }
